@@ -4,7 +4,7 @@ create table public.strongholds (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(name) between 1 and 120),
   state jsonb not null default '{}'::jsonb,
-  created_by uuid not null default (select auth.uid()) references auth.users(id) on delete cascade,
+  created_by uuid not null default auth.uid() references auth.users(id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -235,4 +235,3 @@ grant select, insert, update, delete on public.strongholds to authenticated;
 grant select, insert, update, delete on public.stronghold_members to authenticated;
 
 alter publication supabase_realtime add table public.strongholds;
-
