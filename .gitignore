@@ -1,0 +1,8 @@
+node_modules
+dist
+.agents
+.codex
+.pnpm-store
+.env
+.env.local
+*.log
