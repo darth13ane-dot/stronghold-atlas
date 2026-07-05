@@ -1,0 +1,37 @@
+name: Bootstrap Stronghold Atlas
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/bootstrap/READY
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack project source
+        shell: bash
+        run: |
+          cat .github/bootstrap/chunk-* | base64 --decode > /tmp/stronghold-atlas.tar.gz
+          tar -xzf /tmp/stronghold-atlas.tar.gz
+          rm -rf .github/bootstrap
+          rm -f .github/workflows/bootstrap.yml
+
+      - name: Commit project
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Build Stronghold Atlas"
+          git push
