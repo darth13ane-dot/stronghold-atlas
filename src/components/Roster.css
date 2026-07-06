@@ -1,0 +1,26 @@
+.roster-row {
+  grid-template-columns: 48px minmax(150px, 1fr) minmax(220px, 1.3fr) 90px 34px;
+}
+
+.roster-remove {
+  color: #8b5a50;
+}
+
+.roster-remove:hover {
+  color: var(--danger);
+  background: #f7e8e3;
+}
+
+.roster-empty {
+  margin: 0;
+  padding: 34px 20px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .roster-row {
+    grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  }
+}

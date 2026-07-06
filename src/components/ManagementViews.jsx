@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { facilityCatalog, repairTemplates, ruleSections, tierCosts, upkeepBands } from "../data/rules";
 import { Icon } from "./Icon";
+import "./Roster.css";
 
 function PageHeader({ title, description, children }) {
   return (
@@ -312,6 +313,7 @@ export function Downtime({ state, updateState, onToast }) {
 
 export function Roster({ state, updateState, onToast }) {
   const [name, setName] = useState("");
+
   const addPerson = (event) => {
     event.preventDefault();
     if (!name.trim()) return;
@@ -331,6 +333,21 @@ export function Roster({ state, updateState, onToast }) {
     onToast("Person added to the roster");
   };
 
+  const removePerson = (person) => {
+    if (!window.confirm(`Remove ${person.name} from the roster?`)) return;
+    const firstName = person.name.split(/\s+/)[0];
+    updateState((current) => ({
+      ...current,
+      people: current.people.filter((item) => item.id !== person.id),
+      projects: current.projects.map((project) =>
+        project.owner === person.name || project.owner === firstName
+          ? { ...project, owner: "Unassigned" }
+          : project,
+      ),
+    }));
+    onToast(`${person.name} removed from the roster`);
+  };
+
   return (
     <div className="management-page">
       <PageHeader title="Roster" description="People, specialists, and weekly assignments.">
@@ -346,8 +363,18 @@ export function Roster({ state, updateState, onToast }) {
               {state.projects.map((project) => <option key={project.id}>{project.name}</option>)}
             </select></label>
             <span className={person.assignment === "Unassigned" ? "availability availability--open" : "availability"}>{person.assignment === "Unassigned" ? "Available" : "Assigned"}</span>
+            <button
+              type="button"
+              className="icon-button roster-remove"
+              onClick={() => removePerson(person)}
+              aria-label={`Remove ${person.name} from roster`}
+              title={`Remove ${person.name}`}
+            >
+              <Icon name="trash" size={16} />
+            </button>
           </article>
         ))}
+        {!state.people.length ? <p className="roster-empty">No one is on the roster yet. Add a person above when you are ready.</p> : null}
       </div>
     </div>
   );
