@@ -46,13 +46,11 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
   }
 
   if (!strongholdId) {
-    const { data, error } = await client
+    strongholdId = crypto.randomUUID();
+    const { error } = await client
       .from("strongholds")
-      .insert({ name: localState.name, state: localState, created_by: userId })
-      .select("id")
-      .single();
+      .insert({ id: strongholdId, name: localState.name, state: localState, created_by: userId });
     if (error) throw error;
-    strongholdId = data.id;
     params.set("stronghold", strongholdId);
     window.history.replaceState({}, "", `${window.location.pathname}?${params}`);
   } else {
