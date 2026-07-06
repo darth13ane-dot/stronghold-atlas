@@ -30,7 +30,8 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
   if (!client) return null;
 
   onStatus("connecting");
-  await ensureSession(client);
+  const session = await ensureSession(client);
+  const userId = session.user.id;
   const params = new URLSearchParams(window.location.search);
   const inviteToken = params.get("invite");
   let strongholdId = params.get("stronghold");
@@ -47,7 +48,7 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
   if (!strongholdId) {
     const { data, error } = await client
       .from("strongholds")
-      .insert({ name: localState.name, state: localState })
+      .insert({ name: localState.name, state: localState, created_by: userId })
       .select("id")
       .single();
     if (error) throw error;
