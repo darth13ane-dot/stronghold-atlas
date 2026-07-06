@@ -19,6 +19,10 @@ export const seedState = {
   level: 6,
   week: 12,
   treasury: 1860,
+  condition: {
+    status: "Needs attention",
+    notes: "The north wall needs a structural survey; all other essential areas are operating normally.",
+  },
   rooms: seedRooms,
   projects: [
     { id: "p1", name: "Archive shelving", type: "Upgrade", roomId: "archive", progress: 1, total: 2, cost: 150, owner: "Mara", status: "In progress" },

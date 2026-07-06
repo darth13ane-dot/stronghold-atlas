@@ -75,6 +75,7 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
     )
     .subscribe((status) => {
       if (status === "SUBSCRIBED") onStatus("online");
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") onStatus("error");
     });
 
   return {
@@ -92,6 +93,7 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
         p_role: role,
       });
       if (error) throw error;
+      if (!data) throw new Error("Supabase did not return an invite token.");
       return `${window.location.origin}${window.location.pathname}?invite=${data}`;
     },
     disconnect: () => {
@@ -99,4 +101,3 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
     },
   };
 }
-

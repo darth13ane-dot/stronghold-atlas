@@ -23,10 +23,30 @@ function Progress({ value, total }) {
   );
 }
 
-export function Overview({ state, onNavigate }) {
+const conditionOptions = ["Operational", "Needs attention", "Under repair", "Critical"];
+
+function statusClassName(status) {
+  return status.toLowerCase().replace(/\s+/g, "-");
+}
+
+export function Overview({ state, updateState, onNavigate }) {
   const upkeep = useMemo(() => state.rooms.reduce((sum, room) => sum + room.upkeep, 0), [state.rooms]);
   const active = state.projects.filter((project) => project.status !== "Complete");
   const repaired = state.rooms.filter((room) => room.status === "Operational").length;
+  const condition = state.condition ?? { status: "Operational", notes: "" };
+  const repairRooms = state.rooms.filter((room) => ["Needs repair", "Under repair"].includes(room.status));
+  const repairProjects = state.projects.filter((project) => project.type === "Repair" && project.status !== "Complete");
+
+  const updateCondition = (patch) => {
+    updateState((current) => ({
+      ...current,
+      condition: {
+        status: current.condition?.status ?? "Operational",
+        notes: current.condition?.notes ?? "",
+        ...patch,
+      },
+    }));
+  };
 
   return (
     <div className="management-page">
@@ -38,6 +58,51 @@ export function Overview({ state, onNavigate }) {
         <div><span>Weekly upkeep</span><strong>{upkeep} gp</strong><small>Across {state.rooms.length} rooms</small></div>
         <div><span>Operational</span><strong>{repaired}/{state.rooms.length}</strong><small>Rooms ready</small></div>
         <div><span>Active work</span><strong>{active.length}</strong><small>Projects on the board</small></div>
+      </section>
+      <section className={`surface condition-panel condition-panel--${statusClassName(condition.status)}`}>
+        <div className="section-heading condition-panel__heading">
+          <div>
+            <h2>Stronghold condition</h2>
+            <p>Set the overall state and record what needs attention.</p>
+          </div>
+          <label className="condition-selector">
+            <span>Overall status</span>
+            <select value={condition.status} onChange={(event) => updateCondition({ status: event.target.value })} aria-label="Stronghold condition">
+              {conditionOptions.map((option) => <option key={option}>{option}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="condition-panel__body">
+          <label className="condition-notes">
+            <span>Condition and repair notes</span>
+            <textarea
+              value={condition.notes}
+              onChange={(event) => updateCondition({ notes: event.target.value })}
+              placeholder="Describe damage, risks, or work that needs to be scheduled…"
+            />
+          </label>
+          <div className="condition-issues">
+            <div className="condition-issues__header">
+              <strong>Tracked repair needs</strong>
+              <span>{repairRooms.length + repairProjects.length}</span>
+            </div>
+            {repairRooms.map((room) => (
+              <button key={`room-${room.id}`} onClick={() => onNavigate("plan")}>
+                <span className={`condition-dot condition-dot--${statusClassName(room.status)}`} />
+                <span><strong>{room.name}</strong><small>{room.status} · Open on floor plan</small></span>
+                <Icon name="chevron" size={14} />
+              </button>
+            ))}
+            {repairProjects.map((project) => (
+              <button key={`project-${project.id}`} onClick={() => onNavigate("downtime")}>
+                <span className="condition-dot condition-dot--project" />
+                <span><strong>{project.name}</strong><small>{project.status} · Repair project</small></span>
+                <Icon name="chevron" size={14} />
+              </button>
+            ))}
+            {!repairRooms.length && !repairProjects.length ? <p>No room damage or repair projects are currently tracked.</p> : null}
+          </div>
+        </div>
       </section>
       <div className="overview-grid">
         <section className="surface surface--projects">
@@ -105,6 +170,7 @@ export function Facilities({ state, updateState, onToast, onNavigate }) {
         facility: facility.name,
         tier: facility.startingTier,
         status: "Planned",
+        shape: "rect",
         visibility: "Members",
         skill: facility.skill,
         capacity: 4,
@@ -316,4 +382,3 @@ export function Rules() {
     </div>
   );
 }
-

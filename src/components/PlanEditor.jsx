@@ -14,6 +14,8 @@ const toolItems = [
   { id: "text", label: "Text", icon: "text" },
 ];
 
+const roomStatusOptions = ["Operational", "Needs repair", "Under repair", "Restricted", "Planned"];
+
 function Furniture({ room }) {
   const centerX = room.x + room.w / 2;
   const centerY = room.y + room.h / 2;
@@ -84,8 +86,35 @@ function Furniture({ room }) {
   );
 }
 
+function RoomShape({ room, className, inset = 0, fill }) {
+  if (room.shape === "round") {
+    return (
+      <ellipse
+        className={className}
+        cx={room.x + room.w / 2}
+        cy={room.y + room.h / 2}
+        rx={Math.max(1, room.w / 2 - inset)}
+        ry={Math.max(1, room.h / 2 - inset)}
+        fill={fill}
+      />
+    );
+  }
+  return (
+    <rect
+      className={className}
+      x={room.x + inset}
+      y={room.y + inset}
+      width={Math.max(1, room.w - inset * 2)}
+      height={Math.max(1, room.h - inset * 2)}
+      fill={fill}
+    />
+  );
+}
+
 const FloorRoom = memo(function FloorRoom({ room, selected, onSelect, onResize }) {
   const labelSize = room.w < 150 ? 16 : room.w < 250 ? 20 : 25;
+  const isRound = room.shape === "round";
+  const clipId = `room-clip-${room.id}`;
   const handles = [
     ["nw", room.x, room.y],
     ["ne", room.x + room.w, room.y],
@@ -99,12 +128,13 @@ const FloorRoom = memo(function FloorRoom({ room, selected, onSelect, onResize }
       onPointerDown={(event) => onSelect(event, room)}
       role="button"
       tabIndex="0"
-      aria-label={`${room.name}, ${room.facility}, tier ${room.tier}`}
+      aria-label={`${room.name}, ${isRound ? "round" : "rectangular"} room, ${room.facility}, tier ${room.tier}`}
     >
-      <rect className="floor-room__surface" x={room.x} y={room.y} width={room.w} height={room.h} fill={room.color} />
-      {room.w > 90 && room.h > 80 ? <rect className="floor-room__inner-line" x={room.x + 9} y={room.y + 9} width={room.w - 18} height={room.h - 18} /> : null}
-      <rect className="floor-room__wall" x={room.x} y={room.y} width={room.w} height={room.h} />
-      <Furniture room={room} />
+      {isRound ? <defs><clipPath id={clipId}><RoomShape room={room} inset={6} /></clipPath></defs> : null}
+      <RoomShape className="floor-room__surface" room={room} fill={room.color} />
+      {room.w > 90 && room.h > 80 ? <RoomShape className="floor-room__inner-line" room={room} inset={9} /> : null}
+      <RoomShape className="floor-room__wall" room={room} />
+      <g clipPath={isRound ? `url(#${clipId})` : undefined}><Furniture room={room} /></g>
       <path className="floor-room__door" d={`M${room.x + room.w * 0.44} ${room.y + room.h}h${room.w * 0.12}`} />
       <text className="floor-room__label" x={room.x + room.w / 2} y={room.y + room.h * 0.72} fontSize={labelSize}>
         {room.name}
@@ -141,9 +171,9 @@ function ToolButton({ item, active, onClick, compact = false }) {
   );
 }
 
-function InspectorField({ label, children }) {
+function InspectorField({ label, children, className = "" }) {
   return (
-    <div className="inspector-field">
+    <div className={`inspector-field ${className}`.trim()}>
       <span>{label}</span>
       <div>{children}</div>
     </div>
@@ -300,6 +330,7 @@ export function PlanEditor({ state, updateState, onToast }) {
         facility: "Unassigned",
         tier: 0,
         status: "Planned",
+        shape: "rect",
         visibility: "Members",
         skill: "—",
         capacity: 4,
@@ -386,7 +417,10 @@ export function PlanEditor({ state, updateState, onToast }) {
 
   const selectedCatalog = facilityCatalog.find((item) => item.name === selectedRoom?.facility);
   const maxTier = selectedCatalog?.maxTier ?? 4;
-  const planArea = useMemo(() => Math.round(planRooms.reduce((sum, room) => sum + room.w * room.h, 0) / 76.3), [planRooms]);
+  const planArea = useMemo(
+    () => Math.round(planRooms.reduce((sum, room) => sum + (room.shape === "round" ? Math.PI * (room.w / 2) * (room.h / 2) : room.w * room.h), 0) / 76.3),
+    [planRooms],
+  );
 
   return (
     <div className="plan-editor">
@@ -480,7 +514,7 @@ export function PlanEditor({ state, updateState, onToast }) {
               </button>
             </div>
             <div className="inspector__tags">
-              <span className={`status-tag status-tag--${selectedRoom.status.toLowerCase()}`}>{selectedRoom.status}</span>
+              <span className={`status-tag status-tag--${selectedRoom.status.toLowerCase().replace(/\s+/g, "-")}`}>{selectedRoom.status}</span>
               <span className="status-tag status-tag--neutral">{selectedRoom.visibility}</span>
             </div>
             <div className="inspector__fields">
@@ -490,7 +524,18 @@ export function PlanEditor({ state, updateState, onToast }) {
                   {facilityCatalog.map((item) => <option key={item.id}>{item.name}</option>)}
                 </select>
               </InspectorField>
-              <InspectorField label="Associated skill">
+              <InspectorField label="Shape">
+                <select value={selectedRoom.shape ?? "rect"} onChange={(event) => updateRoom({ shape: event.target.value })} disabled={!editing} aria-label="Room shape">
+                  <option value="rect">Rectangle</option>
+                  <option value="round">Round / oval</option>
+                </select>
+              </InspectorField>
+              <InspectorField label="Status">
+                <select value={selectedRoom.status} onChange={(event) => updateRoom({ status: event.target.value })} disabled={!editing} aria-label="Room status">
+                  {roomStatusOptions.map((status) => <option key={status}>{status}</option>)}
+                </select>
+              </InspectorField>
+              <InspectorField label="Associated skill" className="inspector-field--mobile">
                 <strong>{selectedRoom.skill}</strong>
               </InspectorField>
               <InspectorField label="Capacity">
@@ -506,7 +551,7 @@ export function PlanEditor({ state, updateState, onToast }) {
               <InspectorField label="Upkeep">
                 <span>{selectedRoom.upkeep} gp / week</span>
               </InspectorField>
-              <InspectorField label="Upgrade">
+              <InspectorField label="Upgrade" className="inspector-field--mobile">
                 <span>{selectedRoom.upgradeCost} gp · {selectedRoom.upgradeWeeks} {selectedRoom.upgradeWeeks === 1 ? "week" : "weeks"}</span>
               </InspectorField>
               <InspectorField label="Dependency">
