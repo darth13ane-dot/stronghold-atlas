@@ -23,7 +23,7 @@ function SyncLabel({ status }) {
   );
 }
 
-function AppHeader({ state, updateState, syncStatus, onInvite, onOpenMenu }) {
+function AppHeader({ state, updateState, syncStatus, onCalendar, onInvite, onOpenMenu }) {
   const [editingName, setEditingName] = useState(false);
   return (
     <header className="app-header">
@@ -47,7 +47,7 @@ function AppHeader({ state, updateState, syncStatus, onInvite, onOpenMenu }) {
       </div>
       <div className="app-header__actions">
         <SyncLabel status={syncStatus} />
-        <button className="header-control header-control--week">
+        <button className="header-control header-control--week" onClick={onCalendar} aria-haspopup="dialog">
           <Icon name="calendar" size={18} /> Week {state.week}
         </button>
         <button className="header-control header-control--invite" onClick={onInvite}>
@@ -73,6 +73,36 @@ async function copyToClipboard(value) {
   } catch {
     return false;
   }
+}
+
+function CalendarDialog({ week, onSave, onClose }) {
+  const [draftWeek, setDraftWeek] = useState(week);
+  const normalizedWeek = () => Math.max(1, Math.round(Number(draftWeek) || 1));
+  const adjustWeek = (amount) => setDraftWeek(normalizedWeek() + amount);
+
+  const submit = (event) => {
+    event.preventDefault();
+    onSave(normalizedWeek());
+    onClose();
+  };
+
+  return (
+    <Modal title="Adjust calendar" onClose={onClose}>
+      <form className="invite-dialog" onSubmit={submit}>
+        <p>Move the stronghold calendar backward or forward, or enter a week directly.</p>
+        <div className="share-link">
+          <button type="button" className="icon-button" onClick={() => adjustWeek(-1)} disabled={normalizedWeek() <= 1} aria-label="Previous week">
+            <Icon name="minus" size={18} />
+          </button>
+          <input type="number" min="1" step="1" value={draftWeek} onChange={(event) => setDraftWeek(event.target.value)} aria-label="Current stronghold week" />
+          <button type="button" className="icon-button" onClick={() => adjustWeek(1)} aria-label="Next week">
+            <Icon name="plus" size={18} />
+          </button>
+        </div>
+        <button className="button button--primary button--wide" type="submit">Save week {normalizedWeek()}</button>
+      </form>
+    </Modal>
+  );
 }
 
 function InviteDialog({ cloudConfigured, cloudReady, syncStatus, syncError, createInvite, onClose, onToast }) {
@@ -145,6 +175,7 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [toast, setToast] = useState("");
   const showToast = useCallback((message) => setToast(message), []);
   const dismissToast = useCallback(() => setToast(""), []);
@@ -167,7 +198,7 @@ export default function App() {
     <div className="app-shell">
       <Sidebar active={active} onNavigate={navigate} collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
       <div className="app-main">
-        <AppHeader state={state} updateState={update} syncStatus={syncStatus} onInvite={() => setInviteOpen(true)} onOpenMenu={() => setMenuOpen((value) => !value)} />
+        <AppHeader state={state} updateState={update} syncStatus={syncStatus} onCalendar={() => setCalendarOpen(true)} onInvite={() => setInviteOpen(true)} onOpenMenu={() => setMenuOpen((value) => !value)} />
         <MobileTabs active={active} onNavigate={navigate} />
         {active !== "plan" && active !== "rules" ? (
           <nav className="manage-subnav" aria-label="Management sections">
@@ -177,6 +208,7 @@ export default function App() {
         {menuOpen ? (
           <div className="mobile-menu">
             {manageTabs.map(([id, label]) => <button key={id} onClick={() => navigate(id)}>{label}<Icon name="chevron" size={16} /></button>)}
+            <button onClick={() => { setCalendarOpen(true); setMenuOpen(false); }}>Adjust calendar<Icon name="calendar" size={16} /></button>
             <button onClick={() => { setInviteOpen(true); setMenuOpen(false); }}>Invite collaborators<Icon name="invite" size={16} /></button>
           </div>
         ) : null}
@@ -184,6 +216,7 @@ export default function App() {
           {content}
         </div>
       </div>
+      {calendarOpen ? <CalendarDialog week={state.week} onSave={(week) => { update((current) => ({ ...current, week })); showToast(`Calendar set to week ${week}`); }} onClose={() => setCalendarOpen(false)} /> : null}
       {inviteOpen ? <InviteDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} syncStatus={syncStatus} syncError={syncError} createInvite={createInvite} onClose={() => setInviteOpen(false)} onToast={showToast} /> : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
       {syncError ? <span className="visually-hidden">Realtime sync error: {syncError}</span> : null}
