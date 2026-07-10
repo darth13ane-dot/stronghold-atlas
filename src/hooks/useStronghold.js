@@ -2,19 +2,50 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cloudConfigured, connectCloudWorkspace } from "../lib/cloud";
 
 const STORAGE_KEY = "stronghold-atlas:v2";
+const DEFAULT_FLOOR_ID = "ground";
+
+function normalizeFloors(source, seed) {
+  const floors = Array.isArray(source.floors) && source.floors.length ? source.floors : seed.floors;
+  return (floors?.length ? floors : [{ id: DEFAULT_FLOOR_ID, name: "Ground Floor", order: 0 }])
+    .map((floor, index) => ({
+      id: floor.id ?? `${DEFAULT_FLOOR_ID}-${index}`,
+      name: floor.name ?? (index === 0 ? "Ground Floor" : `Floor ${index + 1}`),
+      order: floor.order ?? index,
+    }))
+    .sort((a, b) => a.order - b.order);
+}
+
+function normalizeLayoutObjects(source, seed, defaultFloorId) {
+  const layoutObjects = Array.isArray(source.layoutObjects) ? source.layoutObjects : seed.layoutObjects;
+  return (layoutObjects ?? []).map((item) => ({
+    kind: "hallway",
+    shape: "rect",
+    floorId: defaultFloorId,
+    color: item.kind === "space" ? "#efe9dc" : "#e7e3da",
+    ...item,
+  }));
+}
 
 function normalizeState(value, seed) {
   const source = value?.schemaVersion === 2 ? value : seed;
+  const floors = normalizeFloors(source, seed);
+  const defaultFloorId = floors[0]?.id ?? DEFAULT_FLOOR_ID;
+  const activeFloorId = floors.some((floor) => floor.id === source.activeFloorId) ? source.activeFloorId : defaultFloorId;
   return {
     ...source,
+    activeFloorId,
+    floors,
     condition: {
       status: source.condition?.status ?? "Operational",
       notes: source.condition?.notes ?? "",
     },
     rooms: (source.rooms ?? seed.rooms).map((room) => ({
       shape: "rect",
+      floorId: defaultFloorId,
+      spaceType: "Operating space",
       ...room,
     })),
+    layoutObjects: normalizeLayoutObjects(source, seed, defaultFloorId),
   };
 }
 

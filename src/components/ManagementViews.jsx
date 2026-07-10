@@ -172,6 +172,8 @@ export function Facilities({ state, updateState, onToast, onNavigate }) {
         tier: facility.startingTier,
         status: "Planned",
         shape: "rect",
+        floorId: current.activeFloorId ?? current.floors?.[0]?.id ?? "ground",
+        spaceType: "Operating space",
         visibility: "Members",
         skill: facility.skill,
         capacity: 4,
