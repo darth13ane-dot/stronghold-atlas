@@ -3,6 +3,7 @@ import { Icon } from "./Icon";
 
 export function Modal({ title, children, onClose }) {
   useEffect(() => {
+    if (!onClose) return undefined;
     const handleKey = (event) => {
       if (event.key === "Escape") onClose();
     };
@@ -15,9 +16,7 @@ export function Modal({ title, children, onClose }) {
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal__header">
           <h2 id="modal-title">{title}</h2>
-          <button className="icon-button" onClick={onClose} aria-label="Close dialog">
-            <Icon name="close" />
-          </button>
+          {onClose ? <button className="icon-button" onClick={onClose} aria-label="Close dialog"><Icon name="close" /></button> : null}
         </div>
         {children}
       </section>
@@ -38,4 +37,3 @@ export function Toast({ message, onDismiss }) {
     </div>
   );
 }
-

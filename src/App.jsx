@@ -149,7 +149,7 @@ function InviteDialog({ cloudConfigured, cloudReady, syncStatus, syncError, crea
             )}
             {!cloudReady && !error ? <div className="invite-status"><SyncLabel status={syncStatus} /><span>{syncError || "The live connection must finish before an invite can be created."}</span></div> : null}
             {error ? <p className="invite-error" role="alert">{error}</p> : null}
-            <small>Invite links expire after seven days and can be claimed once.</small>
+            <small>Invite links expire after seven days. Guests sign in before joining, so they can return later without another invite.</small>
           </>
         ) : (
           <div className="connection-note">
@@ -162,6 +162,44 @@ function InviteDialog({ cloudConfigured, cloudReady, syncStatus, syncError, crea
   );
 }
 
+function InviteLoginDialog({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      await onLogin(email.trim());
+      setSent(true);
+    } catch (loginError) {
+      setError(loginError.message || "Could not send the login link.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal title="Sign in to join">
+      <form className="invite-dialog" onSubmit={submit}>
+        {sent ? (
+          <div className="connection-note"><Icon name="invite" /><div><strong>Check your email</strong><p>Open the secure login link on this device to join the stronghold. You will stay signed in for future visits.</p></div></div>
+        ) : (
+          <>
+            <p>This invitation will be connected to your email so you can return without asking for another link.</p>
+            <label>Email address<input type="email" required autoFocus autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label>
+            <button className="button button--primary button--wide" type="submit" disabled={loading}>{loading ? "Sending login link…" : "Email me a login link"}</button>
+          </>
+        )}
+        {error ? <p className="invite-error" role="alert">{error}</p> : null}
+      </form>
+    </Modal>
+  );
+}
+
 const manageTabs = [
   ["overview", "Summary"],
   ["facilities", "Facilities"],
@@ -170,7 +208,7 @@ const manageTabs = [
 ];
 
 export default function App() {
-  const { state, update, syncStatus, syncError, createInvite, cloudConfigured, cloudReady } = useStronghold(seedState);
+  const { state, update, syncStatus, syncError, createInvite, cloudConfigured, cloudReady, inviteLoginRequired, sendInviteLogin } = useStronghold(seedState);
   const [active, setActive] = useState("plan");
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -218,6 +256,7 @@ export default function App() {
       </div>
       {calendarOpen ? <CalendarDialog week={state.week} onSave={(week) => { update((current) => ({ ...current, week })); showToast(`Calendar set to week ${week}`); }} onClose={() => setCalendarOpen(false)} /> : null}
       {inviteOpen ? <InviteDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} syncStatus={syncStatus} syncError={syncError} createInvite={createInvite} onClose={() => setInviteOpen(false)} onToast={showToast} /> : null}
+      {inviteLoginRequired ? <InviteLoginDialog onLogin={sendInviteLogin} /> : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
       {syncError ? <span className="visually-hidden">Realtime sync error: {syncError}</span> : null}
     </div>

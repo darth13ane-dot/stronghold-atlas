@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cloudConfigured, connectCloudWorkspace } from "../lib/cloud";
+import { cloudConfigured, connectCloudWorkspace, sendInviteLogin } from "../lib/cloud";
 
 const STORAGE_KEY = "stronghold-atlas:v2";
 const DEFAULT_FLOOR_ID = "ground";
@@ -64,6 +64,7 @@ export function useStronghold(seed) {
   const [syncStatus, setSyncStatus] = useState(cloudConfigured ? "connecting" : "local");
   const [syncError, setSyncError] = useState("");
   const [cloudReady, setCloudReady] = useState(false);
+  const [inviteLoginRequired, setInviteLoginRequired] = useState(false);
   const cloudRef = useRef(null);
   const remoteUpdate = useRef(false);
   const broadcastUpdate = useRef(false);
@@ -125,8 +126,14 @@ export function useStronghold(seed) {
       })
       .catch((error) => {
         setCloudReady(false);
-        setSyncStatus("error");
-        setSyncError(error.message);
+        if (error.code === "INVITE_LOGIN_REQUIRED") {
+          setInviteLoginRequired(true);
+          setSyncStatus("connecting");
+          setSyncError("");
+        } else {
+          setSyncStatus("error");
+          setSyncError(error.message);
+        }
       });
 
     return () => {
@@ -170,5 +177,5 @@ export function useStronghold(seed) {
     return cloudRef.current.invite(role);
   }, []);
 
-  return { state, update, syncStatus, syncError, createInvite, cloudConfigured, cloudReady };
+  return { state, update, syncStatus, syncError, createInvite, cloudConfigured, cloudReady, inviteLoginRequired, sendInviteLogin };
 }

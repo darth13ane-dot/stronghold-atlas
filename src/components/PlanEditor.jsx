@@ -786,9 +786,13 @@ export function PlanEditor({ state, updateState, onToast }) {
                 )}
                 {selectedRoom ? <p>{selectedRoom.facility} · Tier {selectedRoom.tier}</p> : <p>{layoutObjectTypeMap.get(selectedLayoutObject.kind)?.label ?? "Layout object"} · {activeFloor?.name}</p>}
               </div>
-              <button className="icon-button" onClick={() => setEditing(false)} aria-label="Close editing">
-                <Icon name="close" size={19} />
-              </button>
+              <div className="inspector__header-actions">
+                <button className="button button--secondary" onClick={() => setEditing((value) => !value)}>
+                  <Icon name="edit" size={17} />
+                  {editing ? "Done" : `Edit ${selectedType === "room" ? "room" : "object"}`}
+                </button>
+                <button className="icon-button" onClick={() => setEditing(false)} aria-label="Close editing"><Icon name="close" size={19} /></button>
+              </div>
             </div>
             <div className="inspector__tags">
               {selectedRoom ? (
@@ -886,10 +890,6 @@ export function PlanEditor({ state, updateState, onToast }) {
               ) : null}
             </div>
             <div className="inspector__actions">
-              <button className="button button--secondary" onClick={() => setEditing((value) => !value)}>
-                <Icon name="edit" size={17} />
-                {editing ? "Finish editing" : `Edit ${selectedType === "room" ? "room" : "object"}`}
-              </button>
               {selectedRoom ? (
                 <button className="button button--primary" onClick={startUpgrade} disabled={selectedRoom.tier >= maxTier}>
                   <Icon name="upgrade" size={17} />

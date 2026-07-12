@@ -762,6 +762,18 @@ button:disabled {
   padding: 0 2px 15px;
 }
 
+.inspector__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.inspector__header-actions .button {
+  min-height: 36px;
+  padding: 7px 11px;
+}
+
 .inspector__header h2 {
   margin: 0;
   color: #202527;
@@ -1093,6 +1105,18 @@ button:disabled {
 .metric-rail small {
   color: #8a8f90;
   font-size: 10px;
+}
+
+.editable-metric input {
+  width: 130px;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.editable-metric .text-button {
+  margin-top: 5px;
+  font-size: 12px;
 }
 
 .condition-panel {
@@ -1658,12 +1682,40 @@ button:disabled {
 }
 
 .project-card {
+  position: relative;
   margin-bottom: 9px;
   padding: 14px;
   background: #fff;
   border: 1px solid #d6d6d1;
   border-radius: 6px;
   box-shadow: 0 2px 6px rgba(22, 27, 29, 0.03);
+}
+
+.project-card__edit {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.project-card__edit:hover { background: var(--surface-muted); color: var(--ink); }
+
+.project-editor { display: grid; gap: 18px; }
+.project-editor label { display: grid; gap: 7px; font-size: 13px; font-weight: 700; color: var(--ink-muted); }
+.project-editor input, .project-editor select { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
+.project-editor__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.project-editor__actions { display: flex; justify-content: space-between; gap: 12px; }
+
+@media (max-width: 620px) {
+  .project-editor__grid { grid-template-columns: 1fr; }
 }
 
 .project-card__top,

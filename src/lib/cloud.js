@@ -17,9 +17,14 @@ async function getClient() {
   return clientPromise;
 }
 
-async function ensureSession(client) {
+async function ensureSession(client, requirePersistentUser = false) {
   const { data } = await client.auth.getSession();
-  if (data.session) return data.session;
+  if (data.session && (!requirePersistentUser || !data.session.user.is_anonymous)) return data.session;
+  if (requirePersistentUser) {
+    const error = new Error("Sign in to accept this invitation.");
+    error.code = "INVITE_LOGIN_REQUIRED";
+    throw error;
+  }
   const { data: signedIn, error } = await client.auth.signInAnonymously();
   if (error) throw error;
   return signedIn.session;
@@ -30,10 +35,10 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
   if (!client) return null;
 
   onStatus("connecting");
-  const session = await ensureSession(client);
-  const userId = session.user.id;
   const params = new URLSearchParams(window.location.search);
   const inviteToken = params.get("invite");
+  const session = await ensureSession(client, Boolean(inviteToken));
+  const userId = session.user.id;
   let strongholdId = params.get("stronghold");
 
   if (inviteToken) {
@@ -99,4 +104,14 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
       client.removeChannel(channel);
     },
   };
+}
+
+export async function sendInviteLogin(email) {
+  const client = await getClient();
+  if (!client) throw new Error("Cloud login is not configured.");
+  const { error } = await client.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.href },
+  });
+  if (error) throw error;
 }

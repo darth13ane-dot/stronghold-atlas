@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { facilityCatalog, repairTemplates, ruleSections, tierCosts, upkeepBands } from "../data/rules";
 import { Icon } from "./Icon";
+import { Modal } from "./Modal";
 import "./Roster.css";
 
 function PageHeader({ title, description, children }) {
@@ -31,6 +32,7 @@ function statusClassName(status) {
 }
 
 export function Overview({ state, updateState, onNavigate }) {
+  const [editingTreasury, setEditingTreasury] = useState(false);
   const upkeep = useMemo(() => state.rooms.reduce((sum, room) => sum + room.upkeep, 0), [state.rooms]);
   const active = state.projects.filter((project) => project.status !== "Complete");
   const repaired = state.rooms.filter((room) => room.status === "Operational").length;
@@ -55,7 +57,23 @@ export function Overview({ state, updateState, onNavigate }) {
         <button className="button button--primary" onClick={() => onNavigate("downtime")}>Plan next week</button>
       </PageHeader>
       <section className="metric-rail" aria-label="Stronghold summary">
-        <div><span>Treasury</span><strong>{state.treasury.toLocaleString()} gp</strong><small>Available funds</small></div>
+        <div className="editable-metric">
+          <span>Treasury</span>
+          {editingTreasury ? (
+            <input
+              autoFocus
+              type="number"
+              min="0"
+              step="1"
+              value={state.treasury}
+              onChange={(event) => updateState((current) => ({ ...current, treasury: Math.max(0, Math.round(Number(event.target.value) || 0)) }))}
+              onBlur={() => setEditingTreasury(false)}
+              onKeyDown={(event) => { if (event.key === "Enter") setEditingTreasury(false); }}
+              aria-label="Treasury gold"
+            />
+          ) : <strong>{state.treasury.toLocaleString()} gp</strong>}
+          <button className="text-button" onClick={() => setEditingTreasury(true)}><Icon name="edit" size={13} /> Edit gold</button>
+        </div>
         <div><span>Weekly upkeep</span><strong>{upkeep} gp</strong><small>Across {state.rooms.length} rooms</small></div>
         <div><span>Operational</span><strong>{repaired}/{state.rooms.length}</strong><small>Rooms ready</small></div>
         <div><span>Active work</span><strong>{active.length}</strong><small>Projects on the board</small></div>
@@ -151,6 +169,41 @@ export function Overview({ state, updateState, onNavigate }) {
   );
 }
 
+function ProjectDialog({ project, rooms, onSave, onDelete, onClose }) {
+  const [draft, setDraft] = useState(() => ({ ...project }));
+  const set = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
+  const submit = (event) => {
+    event.preventDefault();
+    onSave({
+      ...draft,
+      cost: Math.max(0, Math.round(Number(draft.cost) || 0)),
+      total: Math.max(1, Math.round(Number(draft.total) || 1)),
+      progress: Math.max(0, Math.min(Math.round(Number(draft.progress) || 0), Math.max(1, Math.round(Number(draft.total) || 1)))),
+    });
+    onClose();
+  };
+  return (
+    <Modal title="Edit task" onClose={onClose}>
+      <form className="project-editor" onSubmit={submit}>
+        <label>Task name<input required value={draft.name} onChange={(event) => set("name", event.target.value)} /></label>
+        <div className="project-editor__grid">
+          <label>Type<select value={draft.type} onChange={(event) => set("type", event.target.value)}><option>Upgrade</option><option>Repair</option><option>Construction</option><option>Other</option></select></label>
+          <label>Status<select value={draft.status} onChange={(event) => set("status", event.target.value)}><option>Planned</option><option>In progress</option><option>Complete</option></select></label>
+          <label>Owner<input value={draft.owner} onChange={(event) => set("owner", event.target.value)} /></label>
+          <label>Room<select value={draft.roomId} onChange={(event) => set("roomId", event.target.value)}><option value="">General</option>{rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
+          <label>Cost (gp)<input type="number" min="0" value={draft.cost} onChange={(event) => set("cost", event.target.value)} /></label>
+          <label>Total weeks<input type="number" min="1" value={draft.total} onChange={(event) => set("total", event.target.value)} /></label>
+          <label>Weeks complete<input type="number" min="0" value={draft.progress} onChange={(event) => set("progress", event.target.value)} /></label>
+        </div>
+        <div className="project-editor__actions">
+          <button type="button" className="button button--danger-link" onClick={() => { onDelete(project.id); onClose(); }}><Icon name="trash" size={16} /> Delete task</button>
+          <button className="button button--primary" type="submit">Save task</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function Facilities({ state, updateState, onToast, onNavigate }) {
   const [query, setQuery] = useState("");
   const [tierFilter, setTierFilter] = useState("All tiers");
@@ -229,6 +282,7 @@ export function Facilities({ state, updateState, onToast, onNavigate }) {
 
 export function Downtime({ state, updateState, onToast }) {
   const [showRepairs, setShowRepairs] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
   const columns = ["Planned", "In progress", "Complete"];
   const roomMap = useMemo(() => new Map(state.rooms.map((room) => [room.id, room.name])), [state.rooms]);
 
@@ -265,6 +319,16 @@ export function Downtime({ state, updateState, onToast }) {
     onToast("Repair added to the board");
   };
 
+  const saveProject = (project) => {
+    updateState((current) => ({ ...current, projects: current.projects.map((item) => item.id === project.id ? project : item) }));
+    onToast("Task updated");
+  };
+
+  const deleteProject = (id) => {
+    updateState((current) => ({ ...current, projects: current.projects.filter((item) => item.id !== id) }));
+    onToast("Task deleted");
+  };
+
   return (
     <div className="management-page">
       <PageHeader title="Downtime" description={`Coordinate work for week ${state.week}.`}>
@@ -295,6 +359,7 @@ export function Downtime({ state, updateState, onToast }) {
             <div>
               {state.projects.filter((project) => project.status === column).map((project) => (
                 <article className="project-card" key={project.id}>
+                  <button className="project-card__edit" onClick={() => setEditingProject(project)} aria-label={`Edit ${project.name}`}><Icon name="edit" size={15} /></button>
                   <div className="project-card__top"><span>{project.type}</span><small>{project.cost} gp</small></div>
                   <h3>{project.name}</h3>
                   <p>{roomMap.get(project.roomId) ?? "General"} · {project.owner}</p>
@@ -309,6 +374,7 @@ export function Downtime({ state, updateState, onToast }) {
           </section>
         ))}
       </div>
+      {editingProject ? <ProjectDialog project={editingProject} rooms={state.rooms} onSave={saveProject} onDelete={deleteProject} onClose={() => setEditingProject(null)} /> : null}
     </div>
   );
 }
