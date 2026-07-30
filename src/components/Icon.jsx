@@ -36,11 +36,25 @@ const PATHS = {
   ),
   select: <path d="m5 3 13 8-6 2-2 6zM13 13l5 6" />,
   add: <path d="M12 5v14M5 12h14" />,
+  types: (
+    <>
+      <rect x="4" y="4" width="7" height="7" rx="1" />
+      <rect x="13" y="4" width="7" height="7" rx="1" />
+      <rect x="4" y="13" width="7" height="7" rx="1" />
+      <path d="M16.5 14v6M13.5 17h6" />
+    </>
+  ),
   wall: <path d="M4 18h4V6h12v12h-4V10h-4v8H8" />,
   door: <path d="M6 21V4h12v17M9 20V7h6v13M12.5 14h.01" />,
   text: <path d="M5 5h14M12 5v14M8 19h8" />,
   undo: <path d="m9 7-5 5 5 5M5 12h8a6 6 0 0 1 6 6" />,
   redo: <path d="m15 7 5 5-5 5M19 12h-8a6 6 0 0 0-6 6" />,
+  refresh: (
+    <>
+      <path d="M20 7v5h-5" />
+      <path d="M4 17v-5h5M6.1 8.5A7 7 0 0 1 18.8 7M5.2 17A7 7 0 0 0 17.9 15.5" />
+    </>
+  ),
   minus: <path d="M5 12h14" />,
   plus: <path d="M12 5v14M5 12h14" />,
   invite: (
@@ -120,4 +134,3 @@ export function Icon({ name, size = 20, strokeWidth = 1.75, className = "" }) {
     </svg>
   );
 }
-

@@ -106,6 +106,21 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
   };
 }
 
+export async function listRegisteredAccounts() {
+  const client = await getClient();
+  if (!client) throw new Error("Cloud sync is not configured.");
+
+  await ensureSession(client);
+  const strongholdId = new URLSearchParams(window.location.search).get("stronghold");
+  if (!strongholdId) throw new Error("The cloud workspace is still connecting.");
+
+  const { data, error } = await client.rpc("list_stronghold_members", {
+    p_stronghold_id: strongholdId,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function sendInviteLogin(email) {
   const client = await getClient();
   if (!client) throw new Error("Cloud login is not configured.");
