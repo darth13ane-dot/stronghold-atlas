@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cloudConfigured, connectCloudWorkspace, sendInviteLogin } from "../lib/cloud";
+import { normalizeRoomType, roomTypeFromRoom } from "../data/rooms";
 
 const STORAGE_KEY = "stronghold-atlas:v2";
+const SCHEMA_VERSION = 2;
 const DEFAULT_FLOOR_ID = "ground";
 
 function normalizeFloors(source, seed) {
@@ -27,10 +29,19 @@ function normalizeLayoutObjects(source, seed, defaultFloorId) {
 }
 
 function normalizeState(value, seed) {
-  const source = value?.schemaVersion === 2 ? value : seed;
+  const source = value?.schemaVersion === SCHEMA_VERSION ? value : seed;
   const floors = normalizeFloors(source, seed);
   const defaultFloorId = floors[0]?.id ?? DEFAULT_FLOOR_ID;
   const activeFloorId = floors.some((floor) => floor.id === source.activeFloorId) ? source.activeFloorId : defaultFloorId;
+  const sourceRooms = source.rooms ?? seed.rooms;
+  const legacyRoomTypes = sourceRooms
+    .filter((room) => room.hidden)
+    .map((room) => roomTypeFromRoom(room, { id: `room-type-${room.id}`, name: room.name }));
+  const sourceRoomTypes = Array.isArray(source.roomTypes)
+    ? source.roomTypes
+    : legacyRoomTypes.length
+      ? legacyRoomTypes
+      : seed.roomTypes;
   return {
     ...source,
     activeFloorId,
@@ -39,12 +50,15 @@ function normalizeState(value, seed) {
       status: source.condition?.status ?? "Operational",
       notes: source.condition?.notes ?? "",
     },
-    rooms: (source.rooms ?? seed.rooms).map((room) => ({
-      shape: "rect",
-      floorId: defaultFloorId,
-      spaceType: "Operating space",
-      ...room,
-    })),
+    rooms: sourceRooms
+      .filter((room) => !room.hidden)
+      .map((room) => ({
+        shape: "rect",
+        floorId: defaultFloorId,
+        spaceType: "Operating space",
+        ...room,
+      })),
+    roomTypes: (sourceRoomTypes ?? []).map(normalizeRoomType),
     layoutObjects: normalizeLayoutObjects(source, seed, defaultFloorId),
   };
 }
@@ -71,10 +85,11 @@ export function useStronghold(seed) {
   const channelRef = useRef(null);
 
   useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return undefined;
     const channel = new BroadcastChannel("stronghold-atlas");
     channelRef.current = channel;
     channel.onmessage = ({ data }) => {
-      if (data?.schemaVersion === 2) {
+      if (data?.schemaVersion === SCHEMA_VERSION) {
         broadcastUpdate.current = true;
         remoteUpdate.current = true;
         setState(normalizeState(data, seed));
@@ -145,11 +160,11 @@ export function useStronghold(seed) {
   }, []);
 
   useEffect(() => {
-    if (!cloudRef.current) return undefined;
     if (remoteUpdate.current) {
       remoteUpdate.current = false;
       return undefined;
     }
+    if (!cloudRef.current) return undefined;
     setSyncStatus("saving");
     const timer = window.setTimeout(() => {
       cloudRef.current

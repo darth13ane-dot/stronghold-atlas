@@ -1,6 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { facilityCatalog } from "../data/rules";
+import {
+  createRoomFromType,
+  DEFAULT_ROOM_TYPE,
+  getRoomUpgrade,
+  makeId,
+  ROOM_SPACE_OPTIONS,
+  ROOM_STATUS_OPTIONS,
+} from "../data/rooms";
 import { Icon } from "./Icon";
+import { RoomTypesDialog } from "./RoomTypesDialog";
 
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 850;
@@ -16,8 +25,6 @@ const toolItems = [
   { id: "hallway", label: "Add hall", icon: "wall" },
 ];
 
-const roomStatusOptions = ["Operational", "Needs repair", "Under repair", "Restricted", "Planned"];
-const roomSpaceOptions = ["Operating space", "Common area", "Support space", "Private quarters", "Defensive space", "Storage", "Exterior", "Other"];
 const layoutObjectTypes = [
   { id: "space", label: "Operating space", defaultName: "Operating space", color: "#efe9dc", w: 210, h: 145 },
   { id: "hallway", label: "Hallway", defaultName: "Hallway", color: "#e7e3da", w: 170, h: 55 },
@@ -48,10 +55,6 @@ function getFirstSelection(rooms, layoutObjects, floorId) {
   return null;
 }
 
-function makeId(prefix) {
-  return `${prefix}-${Date.now()}-${Math.round(Math.random() * 1000)}`;
-}
-
 function snap(value) {
   return Math.round(value / 5) * 5;
 }
@@ -76,6 +79,12 @@ function itemArea(item) {
 function isTextEntryTarget(target) {
   const tag = target?.tagName;
   return target?.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+function handleItemKeyDown(event, type, id, onActivate) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  onActivate(type, id);
 }
 
 function Furniture({ room }) {
@@ -195,7 +204,7 @@ function ResizeHandles({ item, onResize }) {
   ));
 }
 
-const FloorLayoutObject = memo(function FloorLayoutObject({ item, selected, onSelect, onResize }) {
+const FloorLayoutObject = memo(function FloorLayoutObject({ item, selected, onSelect, onResize, onActivate }) {
   const type = layoutObjectTypeMap.get(item.kind) ?? layoutObjectTypeMap.get("space");
   const labelSize = item.w < 90 ? 12 : item.w < 170 ? 16 : 20;
 
@@ -203,6 +212,7 @@ const FloorLayoutObject = memo(function FloorLayoutObject({ item, selected, onSe
     <g
       className={selected ? `floor-room floor-room--selected floor-object floor-object--${item.kind} floor-object--selected` : `floor-room floor-object floor-object--${item.kind}`}
       onPointerDown={(event) => onSelect(event, "layoutObject", item)}
+      onKeyDown={(event) => handleItemKeyDown(event, "layoutObject", item.id, onActivate)}
       role="button"
       tabIndex="0"
       aria-label={`${item.name}, ${type.label}, ${item.shape === "round" ? "round" : "rectangular"}`}
@@ -219,7 +229,7 @@ const FloorLayoutObject = memo(function FloorLayoutObject({ item, selected, onSe
   );
 });
 
-const FloorRoom = memo(function FloorRoom({ room, selected, onSelect, onResize }) {
+const FloorRoom = memo(function FloorRoom({ room, selected, onSelect, onResize, onActivate }) {
   const labelSize = room.w < 150 ? 16 : room.w < 250 ? 20 : 25;
   const isRound = room.shape === "round";
   const clipId = `room-clip-${room.id}`;
@@ -228,6 +238,7 @@ const FloorRoom = memo(function FloorRoom({ room, selected, onSelect, onResize }
     <g
       className={selected ? "floor-room floor-room--selected" : "floor-room"}
       onPointerDown={(event) => onSelect(event, "room", room)}
+      onKeyDown={(event) => handleItemKeyDown(event, "room", room.id, onActivate)}
       role="button"
       tabIndex="0"
       aria-label={`${room.name}, ${isRound ? "round" : "rectangular"} room, ${room.facility}, tier ${room.tier}`}
@@ -271,6 +282,7 @@ function InspectorField({ label, children, className = "" }) {
 
 export function PlanEditor({ state, updateState, onToast }) {
   const rooms = state.rooms ?? EMPTY_ARRAY;
+  const roomTypes = state.roomTypes ?? EMPTY_ARRAY;
   const layoutObjects = state.layoutObjects ?? EMPTY_ARRAY;
   const floors = useMemo(() => sortFloors(state.floors?.length ? state.floors : [{ id: DEFAULT_FLOOR_ID, name: "Ground Floor", order: 0 }]), [state.floors]);
   const activeFloorId = floors.some((floor) => floor.id === state.activeFloorId) ? state.activeFloorId : floors[0]?.id ?? DEFAULT_FLOOR_ID;
@@ -284,7 +296,10 @@ export function PlanEditor({ state, updateState, onToast }) {
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
   const [interaction, setInteraction] = useState(null);
+  const [roomTypesOpen, setRoomTypesOpen] = useState(false);
+  const [pendingRoomType, setPendingRoomType] = useState(null);
   const svgRef = useRef(null);
+  const interactionChangedRef = useRef(false);
 
   const selectedRoom = useMemo(
     () => (selection?.type === "room" ? rooms.find((room) => room.id === selection.id) ?? null : null),
@@ -299,6 +314,11 @@ export function PlanEditor({ state, updateState, onToast }) {
   const selectedFloorId = selectedItem ? getFloorId(selectedItem) : activeFloorId;
   const selectedCatalog = facilityCatalog.find((item) => item.name === selectedRoom?.facility);
   const maxTier = selectedCatalog?.maxTier ?? 4;
+  const hasActiveUpgrade = selectedRoom
+    ? state.projects.some(
+      (project) => project.roomId === selectedRoom.id && project.type === "Upgrade" && project.status !== "Complete",
+    )
+    : false;
 
   const currentSnapshot = useMemo(
     () => ({ rooms, layoutObjects, floors, activeFloorId }),
@@ -367,6 +387,7 @@ export function PlanEditor({ state, updateState, onToast }) {
       setSelection({ type, id: item.id });
       if (tool !== "select") return;
       event.currentTarget.setPointerCapture?.(event.pointerId);
+      interactionChangedRef.current = false;
       setInteraction({
         type: "move",
         itemType: type,
@@ -382,8 +403,10 @@ export function PlanEditor({ state, updateState, onToast }) {
   const beginResize = useCallback(
     (event, type, item, handle) => {
       event.stopPropagation();
+      if (tool !== "select") return;
       event.currentTarget.setPointerCapture?.(event.pointerId);
       setSelection({ type, id: item.id });
+      interactionChangedRef.current = false;
       setInteraction({
         type: "resize",
         itemType: type,
@@ -394,7 +417,7 @@ export function PlanEditor({ state, updateState, onToast }) {
         startSnapshot: currentSnapshot,
       });
     },
-    [currentSnapshot, pointerToCanvas],
+    [currentSnapshot, pointerToCanvas, tool],
   );
 
   const handlePointerMove = useCallback(
@@ -431,6 +454,11 @@ export function PlanEditor({ state, updateState, onToast }) {
         nextItem = clampItemToCanvas({ ...origin, x, y, w, h }, minSize);
       }
 
+      const geometryChanged = ["x", "y", "w", "h"].some((key) => nextItem[key] !== origin[key]);
+      const wasChanged = interactionChangedRef.current;
+      interactionChangedRef.current = geometryChanged;
+      if (!geometryChanged && !wasChanged) return;
+
       if (interaction.itemType === "room") {
         applyPlanPatch({ rooms: rooms.map((room) => (room.id === interaction.itemId ? nextItem : room)) });
       } else {
@@ -442,8 +470,11 @@ export function PlanEditor({ state, updateState, onToast }) {
 
   const finishInteraction = useCallback(() => {
     if (!interaction) return;
-    setPast((current) => [...current.slice(-29), interaction.startSnapshot]);
-    setFuture([]);
+    if (interactionChangedRef.current) {
+      setPast((current) => [...current.slice(-29), interaction.startSnapshot]);
+      setFuture([]);
+    }
+    interactionChangedRef.current = false;
     setInteraction(null);
   }, [interaction]);
 
@@ -451,38 +482,29 @@ export function PlanEditor({ state, updateState, onToast }) {
     if (!interaction) return undefined;
     const end = () => finishInteraction();
     window.addEventListener("pointerup", end, { once: true });
-    return () => window.removeEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end, { once: true });
+    return () => {
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
   }, [finishInteraction, interaction]);
 
   const addRoom = useCallback(
-    (point = { x: 320, y: 260 }) => {
+    (point = { x: 320, y: 260 }, roomType = null) => {
       const id = makeId("room");
-      const room = clampItemToCanvas({
+      const template = roomType ?? DEFAULT_ROOM_TYPE;
+      const room = clampItemToCanvas(createRoomFromType(template, {
         id,
-        name: "New room",
-        facility: "Unassigned",
-        tier: 0,
-        status: "Planned",
-        shape: "rect",
         floorId: activeFloorId,
-        spaceType: "Operating space",
-        visibility: "Members",
-        skill: "—",
-        capacity: 4,
-        upkeep: 0,
-        upgradeCost: 20,
-        upgradeWeeks: 1,
-        x: point.x - 90,
-        y: point.y - 65,
-        w: 180,
-        h: 130,
-        color: "#ece9e2",
-      }, MIN_ROOM_SIZE);
+        x: point.x - template.w / 2,
+        y: point.y - template.h / 2,
+      }), MIN_ROOM_SIZE);
       commitPlanPatch({ rooms: [...rooms, room] });
       setSelection({ type: "room", id });
       setTool("select");
+      setPendingRoomType(null);
       setEditing(true);
-      onToast("Room added to the current floor");
+      onToast(roomType ? `${room.name} placed on the current floor` : "Room added to the current floor");
     },
     [activeFloorId, commitPlanPatch, onToast, rooms],
   );
@@ -512,8 +534,52 @@ export function PlanEditor({ state, updateState, onToast }) {
     [activeFloorId, commitPlanPatch, layoutObjects, onToast],
   );
 
+  const saveRoomType = useCallback(
+    (roomType) => {
+      updateState((current) => {
+        const currentTypes = current.roomTypes ?? [];
+        const exists = currentTypes.some((item) => item.id === roomType.id);
+        return {
+          ...current,
+          roomTypes: exists
+            ? currentTypes.map((item) => (item.id === roomType.id ? roomType : item))
+            : [...currentTypes, roomType],
+        };
+      });
+      onToast("Room type saved");
+    },
+    [onToast, updateState],
+  );
+
+  const deleteRoomType = useCallback(
+    (roomTypeId) => {
+      updateState((current) => ({
+        ...current,
+        roomTypes: (current.roomTypes ?? []).filter((item) => item.id !== roomTypeId),
+        rooms: current.rooms.map((room) => (room.roomTypeId === roomTypeId ? { ...room, roomTypeId: null } : room)),
+      }));
+      onToast("Room type deleted");
+    },
+    [onToast, updateState],
+  );
+
+  const placeRoomType = useCallback(
+    (roomType) => {
+      setPendingRoomType(roomType);
+      setTool("room-type");
+      setRoomTypesOpen(false);
+      onToast(`Choose where to place ${roomType.name}`);
+    },
+    [onToast],
+  );
+
+  const activateItem = useCallback((type, id) => {
+    setSelection({ type, id });
+  }, []);
+
   const handleCanvasPointerDown = (event) => {
     if (tool === "add") addRoom(pointerToCanvas(event));
+    if (tool === "room-type" && pendingRoomType) addRoom(pointerToCanvas(event), pendingRoomType);
     if (tool === "space" || tool === "hallway") addLayoutObject(tool, pointerToCanvas(event));
   };
 
@@ -585,16 +651,33 @@ export function PlanEditor({ state, updateState, onToast }) {
   const selectFacility = (facilityName) => {
     if (!selectedRoom) return;
     const facility = facilityCatalog.find((item) => item.name === facilityName);
+    const tier = Math.min(
+      facility?.maxTier ?? 4,
+      Math.max(selectedRoom.tier, facility?.startingTier ?? 0),
+    );
     updateRoom({
       facility: facilityName,
       skill: facility?.skill ?? "—",
-      tier: Math.max(selectedRoom.tier, facility?.startingTier ?? 0),
+      tier,
+      ...getRoomUpgrade(tier, facility?.maxTier ?? 4),
+    });
+  };
+
+  const updateRoomTier = (tier) => {
+    updateRoom({
+      tier,
+      ...getRoomUpgrade(tier, maxTier),
     });
   };
 
   const startUpgrade = () => {
     if (!selectedRoom) return;
-    const projectId = `project-${Date.now()}`;
+    if (selectedRoom.tier >= maxTier) return;
+    if (hasActiveUpgrade) {
+      onToast("An upgrade for this room is already active");
+      return;
+    }
+    const projectId = makeId("project");
     updateState((current) => ({
       ...current,
       projects: [
@@ -636,6 +719,7 @@ export function PlanEditor({ state, updateState, onToast }) {
     const handleKeyDown = (event) => {
       if (event.key !== "Delete") return;
       if (isTextEntryTarget(event.target)) return;
+      if (document.querySelector('[role="dialog"]')) return;
       if (!selectedItem) return;
       event.preventDefault();
       removeSelected();
@@ -680,8 +764,12 @@ export function PlanEditor({ state, updateState, onToast }) {
       <div className="plan-editor__toolbar" aria-label="Floor plan tools">
         <div className="toolbar-group toolbar-group--tools">
           {toolItems.map((item) => (
-            <ToolButton key={item.id} item={item} active={tool === item.id} onClick={() => setTool(item.id)} />
+            <ToolButton key={item.id} item={item} active={tool === item.id} onClick={() => { setTool(item.id); setPendingRoomType(null); }} />
           ))}
+          <button className="tool-button" onClick={() => setRoomTypesOpen(true)} title="Create and place reusable room types">
+            <Icon name="types" size={19} />
+            <span>Room types</span>
+          </button>
         </div>
         <div className="toolbar-group toolbar-group--floors">
           <select className="tool-button floor-select" value={activeFloorId} onChange={(event) => applyPlanPatch({ activeFloorId: event.target.value })} aria-label="Choose floor">
@@ -752,6 +840,7 @@ export function PlanEditor({ state, updateState, onToast }) {
                 selected={selection?.type === "layoutObject" && item.id === selection.id}
                 onSelect={beginMove}
                 onResize={beginResize}
+                onActivate={activateItem}
               />
             ))}
             {planRooms.map((room) => (
@@ -761,10 +850,12 @@ export function PlanEditor({ state, updateState, onToast }) {
                 selected={selection?.type === "room" && room.id === selection.id}
                 onSelect={beginMove}
                 onResize={beginResize}
+                onActivate={activateItem}
               />
             ))}
           </svg>
           {tool === "add" ? <div className="canvas-hint">Click anywhere to place a room</div> : null}
+          {tool === "room-type" && pendingRoomType ? <div className="canvas-hint">Click anywhere to place {pendingRoomType.name}</div> : null}
           {tool === "space" ? <div className="canvas-hint">Click anywhere to place an operating space</div> : null}
           {tool === "hallway" ? <div className="canvas-hint">Click anywhere to place a hallway</div> : null}
         </main>
@@ -816,14 +907,14 @@ export function PlanEditor({ state, updateState, onToast }) {
               {selectedRoom ? (
                 <>
                   <InspectorField label="Facility">
-                    <select value={selectedRoom.facility} onChange={(event) => selectFacility(event.target.value)} disabled={!editing}>
+                    <select value={selectedRoom.facility} onChange={(event) => selectFacility(event.target.value)} disabled={!editing} aria-label="Room facility">
                       <option>Unassigned</option>
                       {facilityCatalog.map((item) => <option key={item.id}>{item.name}</option>)}
                     </select>
                   </InspectorField>
                   <InspectorField label="Space use">
                     <select value={selectedRoom.spaceType ?? "Operating space"} onChange={(event) => updateRoom({ spaceType: event.target.value })} disabled={!editing} aria-label="Room space type">
-                      {roomSpaceOptions.map((type) => <option key={type}>{type}</option>)}
+                      {ROOM_SPACE_OPTIONS.map((type) => <option key={type}>{type}</option>)}
                     </select>
                   </InspectorField>
                   <InspectorField label="Shape">
@@ -834,7 +925,7 @@ export function PlanEditor({ state, updateState, onToast }) {
                   </InspectorField>
                   <InspectorField label="Status">
                     <select value={selectedRoom.status} onChange={(event) => updateRoom({ status: event.target.value })} disabled={!editing} aria-label="Room status">
-                      {roomStatusOptions.map((status) => <option key={status}>{status}</option>)}
+                      {ROOM_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}
                     </select>
                   </InspectorField>
                 </>
@@ -865,20 +956,24 @@ export function PlanEditor({ state, updateState, onToast }) {
                     <strong>{selectedRoom.skill}</strong>
                   </InspectorField>
                   <InspectorField label="Capacity">
-                    <input type="number" min="0" value={selectedRoom.capacity} onChange={(event) => updateRoom({ capacity: Number(event.target.value) })} disabled={!editing} />
+                    <input type="number" min="0" value={selectedRoom.capacity} onChange={(event) => updateRoom({ capacity: Number(event.target.value) })} disabled={!editing} aria-label="Room capacity" />
                   </InspectorField>
                   <InspectorField label="Tier">
                     <div className="stepper">
-                      <button onClick={() => updateRoom({ tier: Math.max(0, selectedRoom.tier - 1) })} disabled={!editing || selectedRoom.tier <= 0}><Icon name="minus" size={14} /></button>
+                      <button aria-label="Decrease room tier" onClick={() => updateRoomTier(Math.max(0, selectedRoom.tier - 1))} disabled={!editing || selectedRoom.tier <= 0}><Icon name="minus" size={14} /></button>
                       <strong>{selectedRoom.tier}</strong>
-                      <button onClick={() => updateRoom({ tier: Math.min(maxTier, selectedRoom.tier + 1) })} disabled={!editing || selectedRoom.tier >= maxTier}><Icon name="plus" size={14} /></button>
+                      <button aria-label="Increase room tier" onClick={() => updateRoomTier(Math.min(maxTier, selectedRoom.tier + 1))} disabled={!editing || selectedRoom.tier >= maxTier}><Icon name="plus" size={14} /></button>
                     </div>
                   </InspectorField>
                   <InspectorField label="Upkeep">
                     <span>{selectedRoom.upkeep} gp / week</span>
                   </InspectorField>
                   <InspectorField label="Upgrade" className="inspector-field--mobile">
-                    <span>{selectedRoom.upgradeCost} gp · {selectedRoom.upgradeWeeks} {selectedRoom.upgradeWeeks === 1 ? "week" : "weeks"}</span>
+                    <span>
+                      {selectedRoom.tier >= maxTier
+                        ? "No further upgrades"
+                        : `${selectedRoom.upgradeCost} gp · ${selectedRoom.upgradeWeeks} ${selectedRoom.upgradeWeeks === 1 ? "week" : "weeks"}`}
+                    </span>
                   </InspectorField>
                   <InspectorField label="Dependency">
                     <span>{selectedCatalog?.dependsOn ?? "None"}</span>
@@ -891,9 +986,9 @@ export function PlanEditor({ state, updateState, onToast }) {
             </div>
             <div className="inspector__actions">
               {selectedRoom ? (
-                <button className="button button--primary" onClick={startUpgrade} disabled={selectedRoom.tier >= maxTier}>
+                <button className="button button--primary" onClick={startUpgrade} disabled={selectedRoom.tier >= maxTier || hasActiveUpgrade}>
                   <Icon name="upgrade" size={17} />
-                  {selectedRoom.tier >= maxTier ? "Maximum tier" : "Start upgrade"}
+                  {selectedRoom.tier >= maxTier ? "Maximum tier" : hasActiveUpgrade ? "Upgrade already planned" : "Start upgrade"}
                 </button>
               ) : null}
               {editing ? (
@@ -938,6 +1033,7 @@ export function PlanEditor({ state, updateState, onToast }) {
             </div>
             <div className="inspector__actions">
               <button className="button button--primary" onClick={() => addRoom()}><Icon name="plus" size={17} /> Add room</button>
+              <button className="button button--secondary" onClick={() => setRoomTypesOpen(true)}><Icon name="types" size={17} /> Room types</button>
               <button className="button button--secondary" onClick={() => addLayoutObject("space")}><Icon name="plan" size={17} /> Add operating space</button>
               <button className="button button--secondary" onClick={() => addLayoutObject("hallway")}><Icon name="wall" size={17} /> Add hallway</button>
             </div>
@@ -956,6 +1052,17 @@ export function PlanEditor({ state, updateState, onToast }) {
         <span>·</span>
         <span className="plan-status__saved">Autosaved</span>
       </footer>
+      {roomTypesOpen ? (
+        <RoomTypesDialog
+          roomTypes={roomTypes}
+          selectedRoom={selectedRoom}
+          activeFloorName={activeFloor?.name ?? "current floor"}
+          onSave={saveRoomType}
+          onDelete={deleteRoomType}
+          onPlace={placeRoomType}
+          onClose={() => setRoomTypesOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
