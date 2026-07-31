@@ -5,12 +5,15 @@ export const seedRooms = [
   { id: "archive", name: "Archive", facility: "Library", tier: 2, status: "Operational", visibility: "Public", skill: "Society", capacity: 8, upkeep: 20, upgradeCost: 150, upgradeWeeks: 2, floorId: "ground", spaceType: "Operating space", x: 475, y: 320, w: 300, h: 225, color: "#f1ede5" },
   { id: "guest", name: "Guest Rooms", facility: "Guest Rooms", tier: 1, status: "Operational", visibility: "Members", skill: "Diplomacy", capacity: 8, upkeep: 10, upgradeCost: 50, upgradeWeeks: 1, floorId: "ground", spaceType: "Private quarters", x: 140, y: 590, w: 290, h: 190, color: "#eeebe5" },
   { id: "vault", name: "Vault", facility: "Vault", tier: 1, status: "Restricted", visibility: "Private", skill: "Thievery", capacity: 3, upkeep: 10, upgradeCost: 50, upgradeWeeks: 1, floorId: "ground", spaceType: "Storage", x: 515, y: 590, w: 245, h: 190, color: "#dad9d2" },
-  { id: "kitchen", name: "Kitchen", facility: "Kitchen & Pantry", tier: 1, status: "Operational", visibility: "Members", skill: "—", capacity: 8, upkeep: 10, upgradeCost: 300, upgradeWeeks: 2, floorId: "ground", spaceType: "Support space", x: 0, y: 0, w: 160, h: 90, color: "#e9e3d9", hidden: true },
-  { id: "medical", name: "Medical", facility: "Medical Ward", tier: 1, status: "Operational", visibility: "Members", skill: "Medicine", capacity: 5, upkeep: 10, upgradeCost: 50, upgradeWeeks: 1, floorId: "ground", spaceType: "Support space", x: 0, y: 0, w: 160, h: 90, color: "#e5e9e5", hidden: true },
-  { id: "stables", name: "Stables", facility: "Stables & Kennels", tier: 0, status: "Planned", visibility: "Members", skill: "Survival", capacity: 10, upkeep: 0, upgradeCost: 20, upgradeWeeks: 1, floorId: "ground", spaceType: "Exterior", x: 0, y: 0, w: 160, h: 90, color: "#ebe5d8", hidden: true },
-  { id: "quarters", name: "Quarters", facility: "Resident Quarters", tier: 1, status: "Operational", visibility: "Private", skill: "—", capacity: 6, upkeep: 10, upgradeCost: 300, upgradeWeeks: 2, floorId: "ground", spaceType: "Private quarters", x: 0, y: 0, w: 160, h: 90, color: "#ece8e1", hidden: true },
-  { id: "armory", name: "Armory", facility: "Armory & Defenses", tier: 1, status: "Operational", visibility: "Restricted", skill: "—", capacity: 4, upkeep: 10, upgradeCost: 300, upgradeWeeks: 2, floorId: "ground", spaceType: "Defensive space", x: 0, y: 0, w: 160, h: 90, color: "#dfe0dc", hidden: true },
-  { id: "office", name: "Office", facility: "Unassigned", tier: 0, status: "Operational", visibility: "Private", skill: "Society", capacity: 3, upkeep: 0, upgradeCost: 20, upgradeWeeks: 1, floorId: "ground", spaceType: "Operating space", x: 0, y: 0, w: 160, h: 90, color: "#edeae4", hidden: true },
+];
+
+export const seedRoomTypes = [
+  { id: "room-type-kitchen", name: "Kitchen", facility: "Kitchen & Pantry", tier: 1, status: "Operational", visibility: "Members", skill: "—", capacity: 8, upkeep: 10, upgradeCost: 50, upgradeWeeks: 1, spaceType: "Support space", shape: "rect", w: 160, h: 90, color: "#e9e3d9" },
+  { id: "room-type-medical", name: "Medical", facility: "Medical Ward", tier: 1, status: "Operational", visibility: "Members", skill: "Medicine", capacity: 5, upkeep: 10, upgradeCost: 50, upgradeWeeks: 1, spaceType: "Support space", shape: "rect", w: 160, h: 90, color: "#e5e9e5" },
+  { id: "room-type-stables", name: "Stables", facility: "Stables & Kennels", tier: 0, status: "Planned", visibility: "Members", skill: "Survival", capacity: 10, upkeep: 0, upgradeCost: 20, upgradeWeeks: 1, spaceType: "Exterior", shape: "rect", w: 160, h: 90, color: "#ebe5d8" },
+  { id: "room-type-quarters", name: "Quarters", facility: "Resident Quarters", tier: 1, status: "Operational", visibility: "Private", skill: "—", capacity: 6, upkeep: 10, upgradeCost: 50, upgradeWeeks: 1, spaceType: "Private quarters", shape: "rect", w: 160, h: 90, color: "#ece8e1" },
+  { id: "room-type-armory", name: "Armory", facility: "Armory & Defenses", tier: 1, status: "Operational", visibility: "Restricted", skill: "—", capacity: 4, upkeep: 10, upgradeCost: 50, upgradeWeeks: 1, spaceType: "Defensive space", shape: "rect", w: 160, h: 90, color: "#dfe0dc" },
+  { id: "room-type-office", name: "Office", facility: "Unassigned", tier: 0, status: "Operational", visibility: "Private", skill: "Society", capacity: 3, upkeep: 0, upgradeCost: 20, upgradeWeeks: 1, spaceType: "Operating space", shape: "rect", w: 160, h: 90, color: "#edeae4" },
 ];
 
 export const seedFloors = [
@@ -40,6 +43,7 @@ export const seedState = {
     notes: "The north wall needs a structural survey; all other essential areas are operating normally.",
   },
   rooms: seedRooms,
+  roomTypes: seedRoomTypes,
   layoutObjects: seedLayoutObjects,
   projects: [
     { id: "p1", name: "Archive shelving", type: "Upgrade", roomId: "archive", progress: 1, total: 2, cost: 150, owner: "Mara", status: "In progress" },

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { facilityCatalog, repairTemplates, ruleSections, tierCosts, upkeepBands } from "../data/rules";
+import { createRoomFromType, makeId, roomTypeFromFacility } from "../data/rooms";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 import "./Roster.css";
@@ -17,7 +18,10 @@ function PageHeader({ title, description, children }) {
 }
 
 function Progress({ value, total }) {
-  const percent = total ? Math.min(100, Math.round((value / total) * 100)) : 0;
+  const numericTotal = Number(total);
+  const percent = numericTotal > 0
+    ? Math.max(0, Math.min(100, Math.round((Number(value) / numericTotal) * 100) || 0))
+    : 0;
   return (
     <div className="progress" aria-label={`${percent}% complete`}>
       <span style={{ width: `${percent}%` }} />
@@ -33,7 +37,7 @@ function statusClassName(status) {
 
 export function Overview({ state, updateState, onNavigate }) {
   const [editingTreasury, setEditingTreasury] = useState(false);
-  const upkeep = useMemo(() => state.rooms.reduce((sum, room) => sum + room.upkeep, 0), [state.rooms]);
+  const upkeep = useMemo(() => state.rooms.reduce((sum, room) => sum + (Number(room.upkeep) || 0), 0), [state.rooms]);
   const active = state.projects.filter((project) => project.status !== "Complete");
   const repaired = state.rooms.filter((room) => room.status === "Operational").length;
   const condition = state.condition ?? { status: "Operational", notes: "" };
@@ -123,37 +127,25 @@ export function Overview({ state, updateState, onNavigate }) {
           </div>
         </div>
       </section>
-      <div className="overview-grid">
-        <section className="surface surface--projects">
-          <div className="section-heading">
-            <div><h2>This week</h2><p>Work currently underway</p></div>
-            <button className="text-button" onClick={() => onNavigate("downtime")}>Open board <Icon name="chevron" size={15} /></button>
-          </div>
-          <div className="project-list">
-            {active.map((project) => (
-              <article className="project-row" key={project.id}>
-                <div className="project-row__icon"><Icon name={project.type === "Upgrade" ? "upgrade" : "wall"} /></div>
-                <div className="project-row__main">
-                  <div><strong>{project.name}</strong><span>{project.owner}</span></div>
-                  <Progress value={project.progress} total={project.total} />
-                  <small>{project.progress} of {project.total} weeks · {project.cost} gp</small>
-                </div>
-                <span className="project-row__status">{project.status}</span>
-              </article>
-            ))}
-          </div>
-        </section>
-        <section className="surface surface--activity">
-          <div className="section-heading">
-            <div><h2>Group activity</h2><p>Recent shared changes</p></div>
-          </div>
-          <div className="activity-list">
-            <div><span className="avatar avatar--small" style={{ "--avatar": "#a85a3e" }}>MV</span><p><strong>Mara</strong> assigned Ivo to North wall survey<small>18 minutes ago</small></p></div>
-            <div><span className="avatar avatar--small" style={{ "--avatar": "#6c647b" }}>TR</span><p><strong>Tamsin</strong> updated Archive to tier 2<small>Yesterday</small></p></div>
-            <div><span className="avatar avatar--small" style={{ "--avatar": "#496e63" }}>IH</span><p><strong>Ivo</strong> moved Workshop on the plan<small>2 days ago</small></p></div>
-          </div>
-        </section>
-      </div>
+      <section className="surface surface--projects overview-projects">
+        <div className="section-heading">
+          <div><h2>This week</h2><p>Work currently underway</p></div>
+          <button className="text-button" onClick={() => onNavigate("downtime")}>Open board <Icon name="chevron" size={15} /></button>
+        </div>
+        <div className="project-list">
+          {active.map((project) => (
+            <article className="project-row" key={project.id}>
+              <div className="project-row__icon"><Icon name={project.type === "Upgrade" ? "upgrade" : "wall"} /></div>
+              <div className="project-row__main">
+                <div><strong>{project.name}</strong><span>{project.owner}</span></div>
+                <Progress value={project.progress} total={project.total} />
+                <small>{project.progress} of {project.total} weeks · {project.cost} gp</small>
+              </div>
+              <span className="project-row__status">{project.status}</span>
+            </article>
+          ))}
+        </div>
+      </section>
       <section className="surface facility-strip">
         <div className="section-heading">
           <div><h2>Facility readiness</h2><p>Benefits available to the group</p></div>
@@ -215,30 +207,17 @@ export function Facilities({ state, updateState, onToast, onNavigate }) {
   });
 
   const addFacility = (facility) => {
-    const id = `room-${Date.now()}`;
     updateState((current) => ({
       ...current,
-      rooms: [...current.rooms, {
-        id,
-        name: facility.name,
-        facility: facility.name,
-        tier: facility.startingTier,
-        status: "Planned",
-        shape: "rect",
-        floorId: current.activeFloorId ?? current.floors?.[0]?.id ?? "ground",
-        spaceType: "Operating space",
-        visibility: "Members",
-        skill: facility.skill,
-        capacity: 4,
-        upkeep: 0,
-        upgradeCost: 20,
-        upgradeWeeks: 1,
-        x: 340,
-        y: 300,
-        w: 180,
-        h: 130,
-        color: "#ece9e2",
-      }],
+      rooms: [
+        ...current.rooms,
+        createRoomFromType(roomTypeFromFacility(facility), {
+          floorId: current.activeFloorId ?? current.floors?.[0]?.id ?? "ground",
+          roomTypeId: null,
+          x: 340,
+          y: 300,
+        }),
+      ],
     }));
     onToast(`${facility.name} added to the floor plan`);
     onNavigate("plan");
@@ -304,10 +283,10 @@ export function Downtime({ state, updateState, onToast }) {
     updateState((current) => ({
       ...current,
       projects: [...current.projects, {
-        id: `repair-${Date.now()}`,
+        id: makeId("repair"),
         name: repair.name,
         type: "Repair",
-        roomId: "courtyard",
+        roomId: "",
         progress: 0,
         total: repair.weeks,
         cost: repair.cost,
@@ -320,12 +299,31 @@ export function Downtime({ state, updateState, onToast }) {
   };
 
   const saveProject = (project) => {
-    updateState((current) => ({ ...current, projects: current.projects.map((item) => item.id === project.id ? project : item) }));
+    updateState((current) => {
+      const previous = current.projects.find((item) => item.id === project.id);
+      const projectRenamed = previous && previous.name !== project.name;
+      return {
+        ...current,
+        projects: current.projects.map((item) => item.id === project.id ? project : item),
+        people: projectRenamed
+          ? current.people.map((person) => person.assignment === previous.name ? { ...person, assignment: project.name } : person)
+          : current.people,
+      };
+    });
     onToast("Task updated");
   };
 
   const deleteProject = (id) => {
-    updateState((current) => ({ ...current, projects: current.projects.filter((item) => item.id !== id) }));
+    updateState((current) => {
+      const deleted = current.projects.find((item) => item.id === id);
+      return {
+        ...current,
+        projects: current.projects.filter((item) => item.id !== id),
+        people: deleted
+          ? current.people.map((person) => person.assignment === deleted.name ? { ...person, assignment: "Unassigned" } : person)
+          : current.people,
+      };
+    });
     onToast("Task deleted");
   };
 
@@ -389,7 +387,7 @@ export function Roster({ state, updateState, onToast }) {
     updateState((current) => ({
       ...current,
       people: [...current.people, {
-        id: `person-${Date.now()}`,
+        id: makeId("person"),
         name: name.trim(),
         initials: words.map((word) => word[0]).slice(0, 2).join("").toUpperCase(),
         role: "Member",
@@ -456,20 +454,22 @@ function RulesTable({ columns, rows }) {
 
 export function Rules() {
   const [query, setQuery] = useState("");
-  const filtered = ruleSections.filter((section) => `${section.title} ${section.summary} ${section.bullets.join(" ")}`.toLowerCase().includes(query.toLowerCase()));
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = ruleSections.filter((section) => `${section.title} ${section.summary} ${section.bullets.join(" ")}`.toLowerCase().includes(normalizedQuery));
   return (
     <div className="management-page rules-page">
       <PageHeader title="Rules reference" description="The stronghold mechanics, separated from campaign names and story assumptions." />
       <section className="source-note"><Icon name="info" /><div><strong>Adapted for flexible settings</strong><p>Campaign-specific locations, NPCs, and lore names have been replaced with editable neutral language. Costs, DCs, timing, tiers, and outcomes follow the linked Stronghold Rules source.</p></div></section>
       <label className="search-field rules-search"><Icon name="search" size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search the rules" /></label>
       <div className="rules-layout">
-        <nav>{ruleSections.map((section) => <a href={`#rule-${section.id}`} key={section.id}>{section.title}</a>)}</nav>
+        <nav>{filtered.map((section) => <a href={`#rule-${section.id}`} key={section.id}>{section.title}</a>)}</nav>
         <main>
           {filtered.map((section) => (
             <section className="rule-section" id={`rule-${section.id}`} key={section.id}>
               <h2>{section.title}</h2><p>{section.summary}</p><ul>{section.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}</ul>
             </section>
           ))}
+          {!filtered.length ? <section className="rule-section"><h2>No matching rules</h2><p>Try a broader search term.</p></section> : null}
           <section className="rule-section"><h2>Facility build costs</h2><RulesTable columns={["Tier", "Skill DC", "Cost", "Weeks", "Required proficiency"]} rows={tierCosts.map((row) => [row.tier, row.dc, `${row.cost} gp`, row.weeks, row.proficiency])} /></section>
           <section className="rule-section"><h2>Weekly upkeep</h2><RulesTable columns={["Stronghold level", "Upkeep", "Trading post coverage"]} rows={upkeepBands.map((row) => [row.levels, row.formula, row.trade])} /></section>
         </main>

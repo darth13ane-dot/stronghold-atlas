@@ -8,18 +8,20 @@ import { RegisteredAccountsDialog } from "./components/RegisteredAccountsDialog"
 import { seedState } from "./data/seed";
 import { useStronghold } from "./hooks/useStronghold";
 
+const syncLabels = {
+  local: "Local only",
+  connecting: "Connecting…",
+  saving: "Saving…",
+  online: "Live sync",
+  error: "Sync issue",
+};
+
 function SyncLabel({ status }) {
-  const labels = {
-    local: "Local only",
-    connecting: "Connecting…",
-    saving: "Saving…",
-    online: "Live sync",
-    error: "Sync issue",
-  };
+  const label = syncLabels[status] ?? status;
   return (
-    <span className={`sync-label sync-label--${status}`} aria-label={labels[status] ?? status} title={labels[status] ?? status}>
+    <span className={`sync-label sync-label--${status}`} aria-label={label} title={label}>
       <span className="sync-label__dot" />
-      <span className="sync-label__text">{labels[status] ?? status}</span>
+      <span className="sync-label__text">{label}</span>
     </span>
   );
 }
@@ -216,9 +218,7 @@ export default function App() {
   const [active, setActive] = useState("plan");
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [accountsOpen, setAccountsOpen] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [dialog, setDialog] = useState(null);
   const [toast, setToast] = useState("");
   const showToast = useCallback((message) => setToast(message), []);
   const dismissToast = useCallback(() => setToast(""), []);
@@ -241,7 +241,7 @@ export default function App() {
     <div className="app-shell">
       <Sidebar active={active} onNavigate={navigate} collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
       <div className="app-main">
-        <AppHeader state={state} updateState={update} syncStatus={syncStatus} onAccounts={() => setAccountsOpen(true)} onCalendar={() => setCalendarOpen(true)} onInvite={() => setInviteOpen(true)} onOpenMenu={() => setMenuOpen((value) => !value)} />
+        <AppHeader state={state} updateState={update} syncStatus={syncStatus} onAccounts={() => setDialog("accounts")} onCalendar={() => setDialog("calendar")} onInvite={() => setDialog("invite")} onOpenMenu={() => setMenuOpen((value) => !value)} />
         <MobileTabs active={active} onNavigate={navigate} />
         {active !== "plan" && active !== "rules" ? (
           <nav className="manage-subnav" aria-label="Management sections">
@@ -251,18 +251,18 @@ export default function App() {
         {menuOpen ? (
           <div className="mobile-menu">
             {manageTabs.map(([id, label]) => <button key={id} onClick={() => navigate(id)}>{label}<Icon name="chevron" size={16} /></button>)}
-            <button onClick={() => { setAccountsOpen(true); setMenuOpen(false); }}>Registered accounts<Icon name="users" size={16} /></button>
-            <button onClick={() => { setCalendarOpen(true); setMenuOpen(false); }}>Adjust calendar<Icon name="calendar" size={16} /></button>
-            <button onClick={() => { setInviteOpen(true); setMenuOpen(false); }}>Invite collaborators<Icon name="invite" size={16} /></button>
+            <button onClick={() => { setDialog("accounts"); setMenuOpen(false); }}>Registered accounts<Icon name="users" size={16} /></button>
+            <button onClick={() => { setDialog("calendar"); setMenuOpen(false); }}>Adjust calendar<Icon name="calendar" size={16} /></button>
+            <button onClick={() => { setDialog("invite"); setMenuOpen(false); }}>Invite collaborators<Icon name="invite" size={16} /></button>
           </div>
         ) : null}
         <div className={active === "plan" ? "app-content app-content--plan" : "app-content"}>
           {content}
         </div>
       </div>
-      {calendarOpen ? <CalendarDialog week={state.week} onSave={(week) => { update((current) => ({ ...current, week })); showToast(`Calendar set to week ${week}`); }} onClose={() => setCalendarOpen(false)} /> : null}
-      {inviteOpen ? <InviteDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} syncStatus={syncStatus} syncError={syncError} createInvite={createInvite} onClose={() => setInviteOpen(false)} onToast={showToast} /> : null}
-      {accountsOpen ? <RegisteredAccountsDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} onClose={() => setAccountsOpen(false)} /> : null}
+      {dialog === "calendar" ? <CalendarDialog week={state.week} onSave={(week) => { update((current) => ({ ...current, week })); showToast(`Calendar set to week ${week}`); }} onClose={() => setDialog(null)} /> : null}
+      {dialog === "invite" ? <InviteDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} syncStatus={syncStatus} syncError={syncError} createInvite={createInvite} onClose={() => setDialog(null)} onToast={showToast} /> : null}
+      {dialog === "accounts" ? <RegisteredAccountsDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} onClose={() => setDialog(null)} /> : null}
       {inviteLoginRequired ? <InviteLoginDialog onLogin={sendInviteLogin} /> : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
       {syncError ? <span className="visually-hidden">Realtime sync error: {syncError}</span> : null}

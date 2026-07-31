@@ -3,6 +3,8 @@ dist
 .agents
 .codex
 .pnpm-store
+.publish-git
 .env
 .env.local
 *.log
+bootstrap-payload.tar.gz

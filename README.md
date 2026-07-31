@@ -4,7 +4,7 @@ A collaborative, setting-agnostic stronghold manager based on the mechanics in t
 
 The app includes:
 
-- a customizable SVG floor plan with draggable and resizable rooms;
+- a customizable SVG floor plan with draggable and resizable rooms plus reusable room types;
 - editable room-to-facility assignments, tiers, capacities, and dependencies;
 - facility, downtime, roster, upkeep, and rules views;
 - undo/redo and browser autosave;
@@ -36,7 +36,7 @@ The Vite build in `dist/` can be hosted on Netlify, Vercel, Cloudflare Pages, or
 
 ## Design references
 
-The desktop and mobile concepts used for implementation are stored in the local development workspace under `docs/concepts/`.
+The desktop and mobile concepts used for implementation are saved under `docs/concepts/`.
 
 ## Content note
 

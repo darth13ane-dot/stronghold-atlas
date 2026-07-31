@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { Icon } from "./Icon";
 
-export function Modal({ title, children, onClose }) {
+export function Modal({ title, children, onClose, className = "" }) {
+  const titleId = useId();
+
   useEffect(() => {
     if (!onClose) return undefined;
     const handleKey = (event) => {
@@ -13,9 +15,9 @@ export function Modal({ title, children, onClose }) {
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(event) => event.stopPropagation()}>
+      <section className={`modal ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal__header">
-          <h2 id="modal-title">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           {onClose ? <button className="icon-button" onClick={onClose} aria-label="Close dialog"><Icon name="close" /></button> : null}
         </div>
         {children}
