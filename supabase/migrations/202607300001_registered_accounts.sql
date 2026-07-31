@@ -46,4 +46,5 @@ end;
 $$;
 
 revoke all on function public.list_stronghold_members(uuid) from public;
+revoke all on function public.list_stronghold_members(uuid) from anon;
 grant execute on function public.list_stronghold_members(uuid) to authenticated;
