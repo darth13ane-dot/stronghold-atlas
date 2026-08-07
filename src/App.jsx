@@ -7,6 +7,7 @@ import { PlanEditor } from "./components/PlanEditor";
 import { RegisteredAccountsDialog } from "./components/RegisteredAccountsDialog";
 import { seedState } from "./data/seed";
 import { useStronghold } from "./hooks/useStronghold";
+import { getStrongholdReturnLink } from "./lib/cloud";
 import { normalizeUsername, USERNAME_PATTERN, USERNAME_REQUIREMENTS } from "./lib/usernames";
 
 const syncLabels = {
@@ -142,12 +143,32 @@ function InviteDialog({ cloudConfigured, cloudReady, syncStatus, syncError, crea
     }
   };
 
+  const copyReturnLink = async () => {
+    setError("");
+    const returnLink = getStrongholdReturnLink();
+    if (!returnLink) {
+      setError("The reusable link will be available after live sync finishes connecting.");
+      return;
+    }
+    const copied = await copyToClipboard(returnLink);
+    if (copied) {
+      onToast("Reusable return link copied");
+    } else {
+      setError("Your browser blocked automatic copying. Copy the current page address instead.");
+    }
+  };
+
   return (
     <Modal title="Invite collaborators" onClose={onClose}>
       <div className="invite-dialog">
         <p>Invite a player or co-GM to this stronghold. Changes appear for everyone in realtime.</p>
         {cloudConfigured ? (
           <>
+            <div className="connection-note">
+              <Icon name="cloud" />
+              <div><strong>Reusable return link</strong><p>Bookmark the current address or copy it here to reopen this same stronghold later on this browser.</p></div>
+            </div>
+            <button className="button button--secondary button--wide" onClick={copyReturnLink} disabled={!cloudReady}>Copy return link</button>
             <label>Permission<select value={role} onChange={(event) => setRole(event.target.value)}><option value="editor">Can edit</option><option value="viewer">Can view</option></select></label>
             {link ? (
               <div className="share-link"><input readOnly value={link} onFocus={(event) => event.currentTarget.select()} aria-label="Generated invite link" /><button className="icon-button" onClick={copy} aria-label="Copy invite link"><Icon name="copy" size={18} /></button></div>
@@ -156,7 +177,7 @@ function InviteDialog({ cloudConfigured, cloudReady, syncStatus, syncError, crea
             )}
             {!cloudReady && !error ? <div className="invite-status"><SyncLabel status={syncStatus} /><span>{syncError || "The live connection must finish before an invite can be created."}</span></div> : null}
             {error ? <p className="invite-error" role="alert">{error}</p> : null}
-            <small>Invite links expire after seven days. Guests choose a username and stay connected on the browser they use to join.</small>
+            <small>Invite links expire after seven days and are only needed the first time someone joins. The app remembers this stronghold on that browser for future visits.</small>
           </>
         ) : (
           <div className="connection-note">
