@@ -1,5 +1,7 @@
 .modal.modal--accounts {
   width: min(780px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
 }
 
 .registered-accounts-dialog {
@@ -100,6 +102,7 @@
 }
 
 .account-profile__form input,
+.account-pin__form input,
 .registered-account__role-select {
   height: 36px;
   padding: 0 9px;
@@ -107,6 +110,62 @@
   background: #fff;
   border: 1px solid #c9cac5;
   border-radius: 5px;
+}
+
+.account-pin {
+  display: grid;
+  gap: 12px;
+  padding: 20px 22px;
+  background: #f7f6f2;
+  border-bottom: 1px solid #e7e6e2;
+}
+
+.account-pin__summary > span {
+  color: #946448;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.account-pin__summary h3 {
+  margin: 5px 0 4px;
+  font-family: var(--serif);
+  font-size: 17px;
+}
+
+.account-pin__summary p,
+.account-pin__footer small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.account-pin__form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 9px;
+}
+
+.account-pin__form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted-strong);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.account-pin__form input {
+  min-width: 0;
+}
+
+.account-pin__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .account-profile__error {
@@ -238,6 +297,10 @@
     width: 100%;
   }
 
+  .modal.modal--accounts {
+    max-height: calc(100vh - 12px);
+  }
+
   .registered-accounts-dialog__intro {
     align-items: flex-start;
     flex-direction: column;
@@ -261,6 +324,18 @@
   }
 
   .account-profile__form .button {
+    width: 100%;
+  }
+
+  .account-pin {
+    padding: 18px 15px;
+  }
+
+  .account-pin__form {
+    grid-template-columns: 1fr;
+  }
+
+  .account-pin__form .button {
     width: 100%;
   }
 

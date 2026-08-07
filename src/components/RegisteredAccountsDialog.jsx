@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import {
+  createPinAccess,
   getCurrentUsername,
+  getPinLoginStatus,
   listRegisteredAccounts,
   removeRegisteredAccount,
   setCurrentUsername,
+  signOut,
+  updatePin,
   updateRegisteredAccountRole,
 } from "../lib/cloud";
+import { normalizePin, PIN_PATTERN, PIN_REQUIREMENTS } from "../lib/pins";
 import { normalizeUsername, USERNAME_PATTERN, USERNAME_REQUIREMENTS } from "../lib/usernames";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
@@ -49,15 +54,26 @@ function accountErrorMessage(error) {
   if (error?.code === "42501") {
     return "Only the stronghold owner can manage workspace access.";
   }
+  if (error?.code === "PIN_CONFIRMATION_ENABLED") {
+    return "PIN access needs one final server setting before it can be used.";
+  }
+  if (error?.status === 422 || error?.code === "weak_password") {
+    return PIN_REQUIREMENTS;
+  }
   return error?.message || "Account information could not be loaded.";
 }
 
-export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose, onToast = () => {} }) {
+export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onAccessChanged = () => {}, onClose, onToast = () => {} }) {
   const [members, setMembers] = useState([]);
   const [username, setUsername] = useState("");
   const [savedUsername, setSavedUsername] = useState("");
   const [profileStatus, setProfileStatus] = useState("idle");
   const [profileError, setProfileError] = useState("");
+  const [pinEnabled, setPinEnabled] = useState(null);
+  const [pin, setPin] = useState("");
+  const [pinConfirmation, setPinConfirmation] = useState("");
+  const [pinStatus, setPinStatus] = useState("idle");
+  const [pinError, setPinError] = useState("");
   const [listStatus, setListStatus] = useState("idle");
   const [listError, setListError] = useState("");
   const [canManage, setCanManage] = useState(null);
@@ -71,16 +87,21 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
 
     setProfileStatus("loading");
     setProfileError("");
-    getCurrentUsername()
-      .then((value) => {
+    setPinStatus("loading");
+    setPinError("");
+    Promise.all([getCurrentUsername(), getPinLoginStatus()])
+      .then(([value, hasPinLogin]) => {
         if (!active) return;
         setUsername(value);
         setSavedUsername(value);
+        setPinEnabled(hasPinLogin);
         setProfileStatus("ready");
+        setPinStatus("ready");
       })
       .catch((error) => {
         if (!active) return;
         setProfileStatus("error");
+        setPinStatus("error");
         setProfileError(accountErrorMessage(error));
       });
 
@@ -141,6 +162,58 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
     }
   };
 
+  const savePinAccess = async (event) => {
+    event.preventDefault();
+    const nextUsername = normalizeUsername(username);
+    if (!pinEnabled && !USERNAME_PATTERN.test(nextUsername)) {
+      setPinError(USERNAME_REQUIREMENTS);
+      return;
+    }
+    if (!PIN_PATTERN.test(pin)) {
+      setPinError(PIN_REQUIREMENTS);
+      return;
+    }
+    if (pin !== pinConfirmation) {
+      setPinError("The two PIN entries do not match.");
+      return;
+    }
+
+    setPinStatus("saving");
+    setPinError("");
+    try {
+      if (pinEnabled) {
+        await updatePin(pin);
+      } else {
+        await createPinAccess(nextUsername, pin);
+        setUsername(nextUsername);
+        setSavedUsername(nextUsername);
+        setPinEnabled(true);
+        onAccessChanged();
+      }
+      setPin("");
+      setPinConfirmation("");
+      setPinStatus("ready");
+      onToast(pinEnabled ? "PIN changed" : "Username and PIN access created");
+      setRefreshVersion((value) => value + 1);
+    } catch (error) {
+      setPinStatus("error");
+      setPinError(accountErrorMessage(error));
+    }
+  };
+
+  const leaveSession = async () => {
+    setPinStatus("saving");
+    setPinError("");
+    try {
+      await signOut();
+      onClose();
+      onAccessChanged();
+    } catch (error) {
+      setPinStatus("error");
+      setPinError(accountErrorMessage(error));
+    }
+  };
+
   const changeRole = async (member, role) => {
     setActionUserId(member.user_id);
     setActionError("");
@@ -180,7 +253,7 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
         <header className="registered-accounts-dialog__intro">
           <div>
             <span>Workspace access</span>
-            <p>Choose your public username and manage who can use this stronghold.</p>
+            <p>Manage your username, PIN, and who can use this stronghold.</p>
           </div>
           <button type="button" className="button button--secondary" onClick={refresh} disabled={!cloudReady || refreshing}>
             <Icon name="refresh" size={16} />
@@ -218,6 +291,34 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
               </form>
               <small id="username-help">{USERNAME_REQUIREMENTS} Usernames are unique.</small>
               {profileError ? <p className="account-profile__error" role="alert">{profileError}</p> : null}
+            </section>
+
+            <section className="account-pin" aria-labelledby="account-pin-title">
+              <div className="account-pin__summary">
+                <span>Private access</span>
+                <h3 id="account-pin-title">{pinEnabled ? "PIN access is on" : "Sign in from any browser"}</h3>
+                <p>{pinEnabled
+                  ? "Change your 8-digit PIN here, or sign out on this browser."
+                  : "Create an 8-digit PIN so this account is not limited to the current browser."}</p>
+              </div>
+              <form className="account-pin__form" onSubmit={savePinAccess}>
+                <label>
+                  <span>{pinEnabled ? "New PIN" : "Choose PIN"}</span>
+                  <input required autoComplete="new-password" inputMode="numeric" pattern="[0-9]{8}" maxLength="8" value={pin} onChange={(event) => setPin(normalizePin(event.target.value))} placeholder="8 digits" type="password" />
+                </label>
+                <label>
+                  <span>Confirm PIN</span>
+                  <input required autoComplete="new-password" inputMode="numeric" pattern="[0-9]{8}" maxLength="8" value={pinConfirmation} onChange={(event) => setPinConfirmation(normalizePin(event.target.value))} placeholder="Repeat PIN" type="password" />
+                </label>
+                <button className="button button--primary" type="submit" disabled={pinStatus === "saving" || pinStatus === "loading"}>
+                  {pinStatus === "saving" ? "Saving…" : pinEnabled ? "Change PIN" : "Create PIN access"}
+                </button>
+              </form>
+              <div className="account-pin__footer">
+                <small>{PIN_REQUIREMENTS} There is no email recovery, so keep it somewhere safe.</small>
+                {pinEnabled ? <button className="button button--danger-link" type="button" disabled={pinStatus === "saving"} onClick={leaveSession}>Sign out</button> : null}
+              </div>
+              {pinError ? <p className="account-profile__error" role="alert">{pinError}</p> : null}
             </section>
 
             <section className="member-management" aria-labelledby="member-management-title">
