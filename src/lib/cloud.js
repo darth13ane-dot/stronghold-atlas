@@ -29,7 +29,12 @@ async function getClient() {
 async function getDetachedClient() {
   const { createClient } = await getSupabaseModule();
   return createClient(cloudUrl, cloudKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: `stronghold-atlas-pin-transfer:${crypto.randomUUID()}`,
+    },
   });
 }
 
