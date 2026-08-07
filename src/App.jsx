@@ -8,6 +8,7 @@ import { RegisteredAccountsDialog } from "./components/RegisteredAccountsDialog"
 import { seedState } from "./data/seed";
 import { useStronghold } from "./hooks/useStronghold";
 import { getStrongholdReturnLink } from "./lib/cloud";
+import { normalizePin, PIN_PATTERN, PIN_REQUIREMENTS } from "./lib/pins";
 import { normalizeUsername, USERNAME_PATTERN, USERNAME_REQUIREMENTS } from "./lib/usernames";
 
 const syncLabels = {
@@ -166,7 +167,7 @@ function InviteDialog({ cloudConfigured, cloudReady, syncStatus, syncError, crea
           <>
             <div className="connection-note">
               <Icon name="cloud" />
-              <div><strong>Reusable return link</strong><p>Bookmark the current address or copy it here to reopen this same stronghold later on this browser.</p></div>
+              <div><strong>Reusable return link</strong><p>Bookmark or copy this address. Members can sign in with their username and PIN from any browser.</p></div>
             </div>
             <button className="button button--secondary button--wide" onClick={copyReturnLink} disabled={!cloudReady}>Copy return link</button>
             <label>Permission<select value={role} onChange={(event) => setRole(event.target.value)}><option value="editor">Can edit</option><option value="viewer">Can view</option></select></label>
@@ -177,7 +178,7 @@ function InviteDialog({ cloudConfigured, cloudReady, syncStatus, syncError, crea
             )}
             {!cloudReady && !error ? <div className="invite-status"><SyncLabel status={syncStatus} /><span>{syncError || "The live connection must finish before an invite can be created."}</span></div> : null}
             {error ? <p className="invite-error" role="alert">{error}</p> : null}
-            <small>Invite links expire after seven days and are only needed the first time someone joins. The app remembers this stronghold on that browser for future visits.</small>
+            <small>Invite links expire after seven days and are only needed the first time someone joins. After that, the member can use their username and PIN.</small>
           </>
         ) : (
           <div className="connection-note">
@@ -190,16 +191,36 @@ function InviteDialog({ cloudConfigured, cloudReady, syncStatus, syncError, crea
   );
 }
 
-function inviteJoinErrorMessage(error) {
+function accessErrorMessage(error) {
   if (error?.code === "23505") return "That username is already in use. Try another one.";
-  if (error?.code === "42883") return "The username database update has not been installed yet.";
-  return error?.message || "The invitation could not be accepted.";
+  if (error?.code === "42883") return "The username and PIN database update has not been installed yet.";
+  if (error?.code === "PIN_CONFIRMATION_ENABLED") return "PIN access needs one final server setting before it can be used.";
+  if (error?.code === "INVALID_PIN_LOGIN") return error.message;
+  if (error?.status === 422 || error?.code === "weak_password") return PIN_REQUIREMENTS;
+  return error?.message || "Access could not be completed.";
 }
 
-function InviteJoinDialog({ onJoin }) {
+function AccessDialog({ reason, onCreateAccess, onSignIn }) {
+  const [mode, setMode] = useState(reason === "join" || reason === "setup" ? "create" : "sign-in");
   const [username, setUsername] = useState("");
+  const [pin, setPin] = useState("");
+  const [pinConfirmation, setPinConfirmation] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const creating = mode === "create";
+
+  const title = reason === "setup"
+    ? "Create your access"
+    : reason === "join"
+      ? creating ? "Join this stronghold" : "Sign in to join"
+      : "Sign in to Stronghold";
+
+  const switchMode = (nextMode) => {
+    setMode(nextMode);
+    setPin("");
+    setPinConfirmation("");
+    setError("");
+  };
 
   const submit = async (event) => {
     event.preventDefault();
@@ -208,24 +229,45 @@ function InviteJoinDialog({ onJoin }) {
       setError(USERNAME_REQUIREMENTS);
       return;
     }
+    if (!PIN_PATTERN.test(pin)) {
+      setError(PIN_REQUIREMENTS);
+      return;
+    }
+    if (creating && pin !== pinConfirmation) {
+      setError("The two PIN entries do not match.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
-      await onJoin(nextUsername);
-    } catch (joinError) {
-      setError(inviteJoinErrorMessage(joinError));
+      if (creating) {
+        await onCreateAccess(nextUsername, pin);
+      } else {
+        await onSignIn(nextUsername, pin);
+      }
+    } catch (accessError) {
+      setError(accessErrorMessage(accessError));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Modal title="Join this stronghold">
-      <form className="invite-dialog" onSubmit={submit}>
-        <p>Choose the username other members will see. Access stays connected to this browser.</p>
+    <Modal title={title} className="modal--access">
+      <form className="invite-dialog access-dialog" onSubmit={submit}>
+        <p>{creating
+          ? "Choose a username and private 8-digit PIN. You can use them to return from any browser, with no email required."
+          : "Enter your username and private 8-digit PIN. No email or login link is required."}</p>
         <label>Username<input required autoFocus autoComplete="username" maxLength="24" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="stronghold_keeper" /></label>
-        <small>{USERNAME_REQUIREMENTS}</small>
-        <button className="button button--primary button--wide" type="submit" disabled={loading}>{loading ? "Joining…" : "Join stronghold"}</button>
+        <label>PIN<input required autoComplete={creating ? "new-password" : "current-password"} inputMode="numeric" pattern="[0-9]{8}" maxLength="8" value={pin} onChange={(event) => setPin(normalizePin(event.target.value))} placeholder="8 digits" type="password" /></label>
+        {creating ? <label>Confirm PIN<input required autoComplete="new-password" inputMode="numeric" pattern="[0-9]{8}" maxLength="8" value={pinConfirmation} onChange={(event) => setPinConfirmation(normalizePin(event.target.value))} placeholder="Repeat PIN" type="password" /></label> : null}
+        <small>{USERNAME_REQUIREMENTS} {PIN_REQUIREMENTS} There is no email recovery, so keep your PIN somewhere safe.</small>
+        <button className="button button--primary button--wide" type="submit" disabled={loading}>{loading ? "Working..." : creating ? "Create access and join" : "Sign in"}</button>
+        {reason === "join" ? (
+          <button className="button button--secondary button--wide" type="button" disabled={loading} onClick={() => switchMode(creating ? "sign-in" : "create")}>
+            {creating ? "I already have a username" : "Create a new username and PIN"}
+          </button>
+        ) : null}
         {error ? <p className="invite-error" role="alert">{error}</p> : null}
       </form>
     </Modal>
@@ -240,7 +282,19 @@ const manageTabs = [
 ];
 
 export default function App() {
-  const { state, update, syncStatus, syncError, createInvite, cloudConfigured, cloudReady, inviteUsernameRequired, joinInvite } = useStronghold(seedState);
+  const {
+    state,
+    update,
+    syncStatus,
+    syncError,
+    createInvite,
+    cloudConfigured,
+    cloudReady,
+    accessRequired,
+    signIn,
+    createAccess,
+    refreshCloudConnection,
+  } = useStronghold(seedState);
   const [active, setActive] = useState("plan");
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -288,8 +342,8 @@ export default function App() {
       </div>
       {dialog === "calendar" ? <CalendarDialog week={state.week} onSave={(week) => { update((current) => ({ ...current, week })); showToast(`Calendar set to week ${week}`); }} onClose={() => setDialog(null)} /> : null}
       {dialog === "invite" ? <InviteDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} syncStatus={syncStatus} syncError={syncError} createInvite={createInvite} onClose={() => setDialog(null)} onToast={showToast} /> : null}
-      {dialog === "accounts" ? <RegisteredAccountsDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} onClose={() => setDialog(null)} onToast={showToast} /> : null}
-      {inviteUsernameRequired ? <InviteJoinDialog onJoin={joinInvite} /> : null}
+      {dialog === "accounts" ? <RegisteredAccountsDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} onAccessChanged={refreshCloudConnection} onClose={() => setDialog(null)} onToast={showToast} /> : null}
+      {accessRequired ? <AccessDialog key={accessRequired} reason={accessRequired} onCreateAccess={createAccess} onSignIn={signIn} /> : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
       {syncError ? <span className="visually-hidden">Realtime sync error: {syncError}</span> : null}
     </div>
