@@ -6,6 +6,16 @@ export const ROOM_VISIBILITY_OPTIONS = ["Public", "Members", "Private", "Restric
 
 const DEFAULT_COLOR = "#ece9e2";
 const DEFAULT_FLOOR_ID = "ground";
+const MIN_POLYGON_VERTICES = 3;
+const MAX_POLYGON_VERTICES = 24;
+
+export const DEFAULT_POLYGON_POINTS = Object.freeze([
+  Object.freeze({ x: 0.5, y: 0 }),
+  Object.freeze({ x: 1, y: 0.28 }),
+  Object.freeze({ x: 0.82, y: 1 }),
+  Object.freeze({ x: 0.18, y: 1 }),
+  Object.freeze({ x: 0, y: 0.28 }),
+]);
 
 export const DEFAULT_ROOM_TYPE = Object.freeze({
   id: "room-type-default",
@@ -36,6 +46,25 @@ function toInteger(value, fallback, minimum = 0) {
   return Number.isFinite(number) ? Math.max(minimum, Math.round(number)) : fallback;
 }
 
+function clampUnit(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(0, Math.min(1, number));
+}
+
+export function normalizePolygonPoints(points) {
+  const normalized = Array.isArray(points)
+    ? points.slice(0, MAX_POLYGON_VERTICES).map((point) => ({
+      x: clampUnit(point?.x),
+      y: clampUnit(point?.y),
+    }))
+    : [];
+  const valid = normalized.length >= MIN_POLYGON_VERTICES
+    && normalized.every((point) => point.x !== null && point.y !== null);
+
+  return (valid ? normalized : DEFAULT_POLYGON_POINTS).map((point) => ({ ...point }));
+}
+
 export function getRoomUpgrade(tier, maxTier = 4) {
   const currentTier = toInteger(tier, 0);
   if (currentTier >= maxTier) return { upgradeCost: 0, upgradeWeeks: 0 };
@@ -54,6 +83,7 @@ export function normalizeRoomType(value = {}, index = 0) {
   );
   const upgrade = getRoomUpgrade(tier, facility?.maxTier ?? 4);
   const color = /^#[0-9a-f]{6}$/i.test(value.color ?? "") ? value.color : DEFAULT_COLOR;
+  const shape = ["rect", "round", "polygon"].includes(value.shape) ? value.shape : DEFAULT_ROOM_TYPE.shape;
 
   return {
     id: value.id || `room-type-${index + 1}`,
@@ -61,7 +91,8 @@ export function normalizeRoomType(value = {}, index = 0) {
     facility: facility?.name ?? "Unassigned",
     tier,
     status: ROOM_STATUS_OPTIONS.includes(value.status) ? value.status : DEFAULT_ROOM_TYPE.status,
-    shape: value.shape === "round" ? "round" : "rect",
+    shape,
+    ...(shape === "polygon" ? { points: normalizePolygonPoints(value.points) } : {}),
     spaceType: ROOM_SPACE_OPTIONS.includes(value.spaceType) ? value.spaceType : DEFAULT_ROOM_TYPE.spaceType,
     visibility: ROOM_VISIBILITY_OPTIONS.includes(value.visibility) ? value.visibility : DEFAULT_ROOM_TYPE.visibility,
     skill: facility?.skill ?? value.skill ?? DEFAULT_ROOM_TYPE.skill,
@@ -109,6 +140,7 @@ export function createRoomFromType(roomType = DEFAULT_ROOM_TYPE, options = {}) {
     tier: type.tier,
     status: type.status,
     shape: type.shape,
+    ...(type.shape === "polygon" ? { points: normalizePolygonPoints(type.points) } : {}),
     floorId: options.floorId ?? DEFAULT_FLOOR_ID,
     spaceType: type.spaceType,
     visibility: type.visibility,

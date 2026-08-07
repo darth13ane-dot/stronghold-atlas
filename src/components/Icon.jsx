@@ -36,6 +36,16 @@ const PATHS = {
   ),
   select: <path d="m5 3 13 8-6 2-2 6zM13 13l5 6" />,
   add: <path d="M12 5v14M5 12h14" />,
+  polygon: (
+    <>
+      <path d="m5 5 12-2 4 8-7 10-11-5z" />
+      <circle cx="5" cy="5" r="1" />
+      <circle cx="17" cy="3" r="1" />
+      <circle cx="21" cy="11" r="1" />
+      <circle cx="14" cy="21" r="1" />
+      <circle cx="3" cy="16" r="1" />
+    </>
+  ),
   types: (
     <>
       <rect x="4" y="4" width="7" height="7" rx="1" />

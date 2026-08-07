@@ -7,6 +7,7 @@ import { PlanEditor } from "./components/PlanEditor";
 import { RegisteredAccountsDialog } from "./components/RegisteredAccountsDialog";
 import { seedState } from "./data/seed";
 import { useStronghold } from "./hooks/useStronghold";
+import { inviteLoginErrorMessage } from "./lib/cloud";
 
 const syncLabels = {
   local: "Local only",
@@ -182,7 +183,7 @@ function InviteLoginDialog({ onLogin }) {
       await onLogin(email.trim());
       setSent(true);
     } catch (loginError) {
-      setError(loginError.message || "Could not send the login link.");
+      setError(inviteLoginErrorMessage(loginError));
     } finally {
       setLoading(false);
     }
@@ -251,7 +252,7 @@ export default function App() {
         {menuOpen ? (
           <div className="mobile-menu">
             {manageTabs.map(([id, label]) => <button key={id} onClick={() => navigate(id)}>{label}<Icon name="chevron" size={16} /></button>)}
-            <button onClick={() => { setDialog("accounts"); setMenuOpen(false); }}>Registered accounts<Icon name="users" size={16} /></button>
+            <button onClick={() => { setDialog("accounts"); setMenuOpen(false); }}>Accounts &amp; access<Icon name="users" size={16} /></button>
             <button onClick={() => { setDialog("calendar"); setMenuOpen(false); }}>Adjust calendar<Icon name="calendar" size={16} /></button>
             <button onClick={() => { setDialog("invite"); setMenuOpen(false); }}>Invite collaborators<Icon name="invite" size={16} /></button>
           </div>
@@ -262,7 +263,7 @@ export default function App() {
       </div>
       {dialog === "calendar" ? <CalendarDialog week={state.week} onSave={(week) => { update((current) => ({ ...current, week })); showToast(`Calendar set to week ${week}`); }} onClose={() => setDialog(null)} /> : null}
       {dialog === "invite" ? <InviteDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} syncStatus={syncStatus} syncError={syncError} createInvite={createInvite} onClose={() => setDialog(null)} onToast={showToast} /> : null}
-      {dialog === "accounts" ? <RegisteredAccountsDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} onClose={() => setDialog(null)} /> : null}
+      {dialog === "accounts" ? <RegisteredAccountsDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} onClose={() => setDialog(null)} onToast={showToast} /> : null}
       {inviteLoginRequired ? <InviteLoginDialog onLogin={sendInviteLogin} /> : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
       {syncError ? <span className="visually-hidden">Realtime sync error: {syncError}</span> : null}

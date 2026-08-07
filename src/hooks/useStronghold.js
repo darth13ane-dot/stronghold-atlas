@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cloudConfigured, connectCloudWorkspace, sendInviteLogin } from "../lib/cloud";
-import { normalizeRoomType, roomTypeFromRoom } from "../data/rooms";
+import { normalizePolygonPoints, normalizeRoomType, roomTypeFromRoom } from "../data/rooms";
 
 const STORAGE_KEY = "stronghold-atlas:v2";
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
+const OLDEST_SUPPORTED_SCHEMA = 2;
 const DEFAULT_FLOOR_ID = "ground";
 
 function normalizeFloors(source, seed) {
@@ -29,11 +30,13 @@ function normalizeLayoutObjects(source, seed, defaultFloorId) {
 }
 
 function normalizeState(value, seed) {
-  const source = value?.schemaVersion === SCHEMA_VERSION ? value : seed;
+  const source = value?.schemaVersion >= OLDEST_SUPPORTED_SCHEMA && value.schemaVersion <= SCHEMA_VERSION
+    ? value
+    : seed;
   const floors = normalizeFloors(source, seed);
   const defaultFloorId = floors[0]?.id ?? DEFAULT_FLOOR_ID;
   const activeFloorId = floors.some((floor) => floor.id === source.activeFloorId) ? source.activeFloorId : defaultFloorId;
-  const sourceRooms = source.rooms ?? seed.rooms;
+  const sourceRooms = Array.isArray(source.rooms) ? source.rooms : seed.rooms;
   const legacyRoomTypes = sourceRooms
     .filter((room) => room.hidden)
     .map((room) => roomTypeFromRoom(room, { id: `room-type-${room.id}`, name: room.name }));
@@ -44,6 +47,7 @@ function normalizeState(value, seed) {
       : seed.roomTypes;
   return {
     ...source,
+    schemaVersion: SCHEMA_VERSION,
     activeFloorId,
     floors,
     condition: {
@@ -57,6 +61,7 @@ function normalizeState(value, seed) {
         floorId: defaultFloorId,
         spaceType: "Operating space",
         ...room,
+        ...(room.shape === "polygon" ? { points: normalizePolygonPoints(room.points) } : {}),
       })),
     roomTypes: (sourceRoomTypes ?? []).map(normalizeRoomType),
     layoutObjects: normalizeLayoutObjects(source, seed, defaultFloorId),
@@ -89,7 +94,7 @@ export function useStronghold(seed) {
     const channel = new BroadcastChannel("stronghold-atlas");
     channelRef.current = channel;
     channel.onmessage = ({ data }) => {
-      if (data?.schemaVersion === SCHEMA_VERSION) {
+      if (data?.schemaVersion >= OLDEST_SUPPORTED_SCHEMA && data.schemaVersion <= SCHEMA_VERSION) {
         broadcastUpdate.current = true;
         remoteUpdate.current = true;
         setState(normalizeState(data, seed));

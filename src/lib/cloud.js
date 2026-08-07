@@ -30,6 +30,12 @@ async function ensureSession(client, requirePersistentUser = false) {
   return signedIn.session;
 }
 
+function getStrongholdId() {
+  const strongholdId = new URLSearchParams(window.location.search).get("stronghold");
+  if (!strongholdId) throw new Error("The cloud workspace is still connecting.");
+  return strongholdId;
+}
+
 export async function connectCloudWorkspace(localState, onRemoteState, onStatus) {
   const client = await getClient();
   if (!client) return null;
@@ -111,14 +117,66 @@ export async function listRegisteredAccounts() {
   if (!client) throw new Error("Cloud sync is not configured.");
 
   await ensureSession(client);
-  const strongholdId = new URLSearchParams(window.location.search).get("stronghold");
-  if (!strongholdId) throw new Error("The cloud workspace is still connecting.");
+  const strongholdId = getStrongholdId();
 
   const { data, error } = await client.rpc("list_stronghold_members", {
     p_stronghold_id: strongholdId,
   });
   if (error) throw error;
   return data ?? [];
+}
+
+export async function getCurrentUsername() {
+  const client = await getClient();
+  if (!client) throw new Error("Cloud sync is not configured.");
+  await ensureSession(client);
+  const { data, error } = await client.rpc("get_current_username");
+  if (error) throw error;
+  return data ?? "";
+}
+
+export async function setCurrentUsername(username) {
+  const client = await getClient();
+  if (!client) throw new Error("Cloud sync is not configured.");
+  await ensureSession(client);
+  const { data, error } = await client.rpc("set_current_username", { p_username: username });
+  if (error) throw error;
+  return data;
+}
+
+export async function updateRegisteredAccountRole(userId, role) {
+  const client = await getClient();
+  if (!client) throw new Error("Cloud sync is not configured.");
+  await ensureSession(client);
+  const { data, error } = await client.rpc("update_stronghold_member_role", {
+    p_stronghold_id: getStrongholdId(),
+    p_user_id: userId,
+    p_role: role,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function removeRegisteredAccount(userId) {
+  const client = await getClient();
+  if (!client) throw new Error("Cloud sync is not configured.");
+  await ensureSession(client);
+  const { error } = await client.rpc("remove_stronghold_member", {
+    p_stronghold_id: getStrongholdId(),
+    p_user_id: userId,
+  });
+  if (error) throw error;
+}
+
+export function inviteLoginErrorMessage(error) {
+  const signature = `${error?.code ?? ""} ${error?.message ?? ""}`.toLowerCase();
+  if (error?.status === 429 || signature.includes("rate limit") || signature.includes("quota")) {
+    return "Email delivery is temporarily rate-limited. Try again later, or ask the stronghold owner to configure custom SMTP in Supabase.";
+  }
+  if (signature.includes("not authorized")) {
+    return "This email address is not authorized by the current Supabase mail service. The stronghold owner needs to configure custom SMTP.";
+  }
+  return error?.message || "Could not send the login link.";
 }
 
 export async function sendInviteLogin(email) {
