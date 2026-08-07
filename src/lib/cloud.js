@@ -17,17 +17,19 @@ async function getClient() {
   return clientPromise;
 }
 
-async function ensureSession(client, requirePersistentUser = false) {
+async function ensureSession(client) {
   const { data } = await client.auth.getSession();
-  if (data.session && (!requirePersistentUser || !data.session.user.is_anonymous)) return data.session;
-  if (requirePersistentUser) {
-    const error = new Error("Sign in to accept this invitation.");
-    error.code = "INVITE_LOGIN_REQUIRED";
-    throw error;
-  }
+  if (data.session) return data.session;
   const { data: signedIn, error } = await client.auth.signInAnonymously();
   if (error) throw error;
+  if (!signedIn.session) throw new Error("Supabase did not create a browser session.");
   return signedIn.session;
+}
+
+async function readCurrentUsername(client) {
+  const { data, error } = await client.rpc("get_current_username");
+  if (error) throw error;
+  return data ?? "";
 }
 
 function getStrongholdId() {
@@ -43,11 +45,17 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
   onStatus("connecting");
   const params = new URLSearchParams(window.location.search);
   const inviteToken = params.get("invite");
-  const session = await ensureSession(client, Boolean(inviteToken));
+  const session = await ensureSession(client);
   const userId = session.user.id;
   let strongholdId = params.get("stronghold");
 
   if (inviteToken) {
+    const username = await readCurrentUsername(client);
+    if (!username) {
+      const error = new Error("Choose a username to accept this invitation.");
+      error.code = "INVITE_USERNAME_REQUIRED";
+      throw error;
+    }
     const { data, error } = await client.rpc("accept_stronghold_invite", { p_token: inviteToken });
     if (error) throw error;
     strongholdId = data;
@@ -130,9 +138,7 @@ export async function getCurrentUsername() {
   const client = await getClient();
   if (!client) throw new Error("Cloud sync is not configured.");
   await ensureSession(client);
-  const { data, error } = await client.rpc("get_current_username");
-  if (error) throw error;
-  return data ?? "";
+  return readCurrentUsername(client);
 }
 
 export async function setCurrentUsername(username) {
@@ -164,27 +170,6 @@ export async function removeRegisteredAccount(userId) {
   const { error } = await client.rpc("remove_stronghold_member", {
     p_stronghold_id: getStrongholdId(),
     p_user_id: userId,
-  });
-  if (error) throw error;
-}
-
-export function inviteLoginErrorMessage(error) {
-  const signature = `${error?.code ?? ""} ${error?.message ?? ""}`.toLowerCase();
-  if (error?.status === 429 || signature.includes("rate limit") || signature.includes("quota")) {
-    return "Email delivery is temporarily rate-limited. Try again later, or ask the stronghold owner to configure custom SMTP in Supabase.";
-  }
-  if (signature.includes("not authorized")) {
-    return "This email address is not authorized by the current Supabase mail service. The stronghold owner needs to configure custom SMTP.";
-  }
-  return error?.message || "Could not send the login link.";
-}
-
-export async function sendInviteLogin(email) {
-  const client = await getClient();
-  if (!client) throw new Error("Cloud login is not configured.");
-  const { error } = await client.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.href },
   });
   if (error) throw error;
 }

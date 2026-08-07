@@ -6,11 +6,11 @@ import {
   setCurrentUsername,
   updateRegisteredAccountRole,
 } from "../lib/cloud";
+import { normalizeUsername, USERNAME_PATTERN, USERNAME_REQUIREMENTS } from "../lib/usernames";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 import "./RegisteredAccountsDialog.css";
 
-const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,24}$/;
 const roleLabels = {
   owner: "Owner",
   editor: "Editor",
@@ -19,7 +19,7 @@ const roleLabels = {
 const joinedDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 function memberInitials(member) {
-  const source = member.display_name || member.email || "Registered account";
+  const source = member.display_name || member.email || "Stronghold member";
   return source
     .split(/[\s@._-]+/)
     .filter(Boolean)
@@ -118,9 +118,9 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
 
   const saveUsername = async (event) => {
     event.preventDefault();
-    const nextUsername = username.trim();
+    const nextUsername = normalizeUsername(username);
     if (!USERNAME_PATTERN.test(nextUsername)) {
-      setProfileError("Use 3 to 24 letters, numbers, or underscores.");
+      setProfileError(USERNAME_REQUIREMENTS);
       return;
     }
 
@@ -158,7 +158,7 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
   };
 
   const removeMember = async (member) => {
-    if (!window.confirm(`Remove ${member.display_name || member.email || "this account"} from the stronghold?`)) return;
+    if (!window.confirm(`Remove ${member.display_name || member.email || "this member"} from the stronghold?`)) return;
     setActionUserId(member.user_id);
     setActionError("");
     try {
@@ -216,14 +216,14 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
                   {profileStatus === "saving" ? "Saving…" : "Save username"}
                 </button>
               </form>
-              <small id="username-help">3–24 letters, numbers, or underscores. Usernames are unique.</small>
+              <small id="username-help">{USERNAME_REQUIREMENTS} Usernames are unique.</small>
               {profileError ? <p className="account-profile__error" role="alert">{profileError}</p> : null}
             </section>
 
             <section className="member-management" aria-labelledby="member-management-title">
               <div className="registered-accounts-dialog__count">
                 <span id="member-management-title">Stronghold members</span>
-                {canManage ? <span>{members.length} registered {members.length === 1 ? "account" : "accounts"}</span> : null}
+                {canManage ? <span>{members.length} {members.length === 1 ? "member" : "members"}</span> : null}
               </div>
 
               {actionError ? <p className="registered-accounts-dialog__message registered-accounts-dialog__message--error" role="alert">{actionError}</p> : null}
@@ -246,10 +246,10 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
                         <span className="registered-account__avatar">{memberInitials(member)}</span>
                         <div className="registered-account__identity">
                           <strong>
-                            {member.display_name || "Registered account"}
+                            {member.display_name || "Stronghold member"}
                             {member.is_current_user ? <small>You</small> : null}
                           </strong>
-                          <span>{member.email || "Email unavailable"}</span>
+                          <span>{member.email || "Username-only access"}</span>
                           <time dateTime={member.joined_at}>{joinedDate(member.joined_at)}</time>
                         </div>
                         {locked ? (
@@ -281,7 +281,7 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
                   })}
                 </div>
               ) : (
-                <p className="registered-accounts-dialog__message">No registered accounts were found for this stronghold.</p>
+                <p className="registered-accounts-dialog__message">No members were found for this stronghold.</p>
               )}
             </section>
           </>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cloudConfigured, connectCloudWorkspace, sendInviteLogin } from "../lib/cloud";
+import { cloudConfigured, connectCloudWorkspace, setCurrentUsername } from "../lib/cloud";
 import { normalizePolygonPoints, normalizeRoomType, roomTypeFromRoom } from "../data/rooms";
 
 const STORAGE_KEY = "stronghold-atlas:v2";
@@ -83,7 +83,8 @@ export function useStronghold(seed) {
   const [syncStatus, setSyncStatus] = useState(cloudConfigured ? "connecting" : "local");
   const [syncError, setSyncError] = useState("");
   const [cloudReady, setCloudReady] = useState(false);
-  const [inviteLoginRequired, setInviteLoginRequired] = useState(false);
+  const [inviteUsernameRequired, setInviteUsernameRequired] = useState(false);
+  const [cloudConnectionVersion, setCloudConnectionVersion] = useState(0);
   const cloudRef = useRef(null);
   const remoteUpdate = useRef(false);
   const broadcastUpdate = useRef(false);
@@ -143,11 +144,12 @@ export function useStronghold(seed) {
         }
         cloudRef.current = connection;
         setCloudReady(Boolean(connection));
+        setInviteUsernameRequired(false);
       })
       .catch((error) => {
         setCloudReady(false);
-        if (error.code === "INVITE_LOGIN_REQUIRED") {
-          setInviteLoginRequired(true);
+        if (error.code === "INVITE_USERNAME_REQUIRED") {
+          setInviteUsernameRequired(true);
           setSyncStatus("connecting");
           setSyncError("");
         } else {
@@ -160,9 +162,10 @@ export function useStronghold(seed) {
       active = false;
       cloudRef.current?.disconnect();
     };
-    // The initial snapshot is intentionally captured once for cloud bootstrapping.
+    // Cloud bootstrapping only retries after the invited user saves a username.
+    // Ordinary state changes are handled by the save effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cloudConnectionVersion]);
 
   useEffect(() => {
     if (remoteUpdate.current) {
@@ -197,5 +200,11 @@ export function useStronghold(seed) {
     return cloudRef.current.invite(role);
   }, []);
 
-  return { state, update, syncStatus, syncError, createInvite, cloudConfigured, cloudReady, inviteLoginRequired, sendInviteLogin };
+  const joinInvite = useCallback(async (username) => {
+    await setCurrentUsername(username);
+    setInviteUsernameRequired(false);
+    setCloudConnectionVersion((version) => version + 1);
+  }, []);
+
+  return { state, update, syncStatus, syncError, createInvite, cloudConfigured, cloudReady, inviteUsernameRequired, joinInvite };
 }

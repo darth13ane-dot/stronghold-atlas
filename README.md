@@ -9,7 +9,7 @@ The app includes:
 - facility, downtime, roster, upkeep, and rules views;
 - undo/redo and browser autosave;
 - same-device live updates across tabs;
-- optional Supabase-backed sign-in, usernames, owner-managed member access, secure invite links, row-level access, and realtime internet sync.
+- optional Supabase-backed browser sessions, usernames, owner-managed member access, secure invite links, row-level access, and realtime internet sync.
 
 ## Run locally
 
@@ -28,9 +28,9 @@ Without cloud settings, the app runs in local demo mode and stores its state in 
 4. Copy `.env.example` to `.env.local` and fill in the project URL and public anon key.
 5. Restart the app. The first visitor creates a shared stronghold; **Invite** creates a single-use, seven-day link for an editor or viewer.
 
-The database uses authenticated users, indexed membership checks, row-level security, owner-only account-management functions, and one-time invite claims. The service role key is never used by the browser.
+The database uses anonymous Supabase Auth sessions, indexed membership checks, row-level security, owner-only account-management functions, and one-time invite claims. The service role key is never used by the browser.
 
-For production invitations, configure a custom SMTP provider under Supabase Authentication settings. Supabase's built-in mail service is intended for testing and has a very low project-wide quota.
+No email provider or SMTP setup is required. A guest opens an invite, chooses a username, and stays connected through the anonymous session saved by that browser. Clearing browser data or moving to a new device requires a fresh invite.
 
 ## Deploy
 
