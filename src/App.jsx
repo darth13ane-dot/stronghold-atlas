@@ -201,9 +201,9 @@ function InviteJoinDialog({ onJoin }) {
   return (
     <Modal title="Join this stronghold">
       <form className="invite-dialog" onSubmit={submit}>
-        <p>Choose the username other members will see. No email address is required.</p>
+        <p>Choose the username other members will see. Access stays connected to this browser.</p>
         <label>Username<input required autoFocus autoComplete="username" maxLength="24" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="stronghold_keeper" /></label>
-        <small>{USERNAME_REQUIREMENTS} Access stays connected to this browser.</small>
+        <small>{USERNAME_REQUIREMENTS}</small>
         <button className="button button--primary button--wide" type="submit" disabled={loading}>{loading ? "Joining…" : "Join stronghold"}</button>
         {error ? <p className="invite-error" role="alert">{error}</p> : null}
       </form>

@@ -19,7 +19,7 @@ const roleLabels = {
 const joinedDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 function memberInitials(member) {
-  const source = member.display_name || member.email || "Stronghold member";
+  const source = member.display_name || "Stronghold member";
   return source
     .split(/[\s@._-]+/)
     .filter(Boolean)
@@ -158,7 +158,7 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
   };
 
   const removeMember = async (member) => {
-    if (!window.confirm(`Remove ${member.display_name || member.email || "this member"} from the stronghold?`)) return;
+    if (!window.confirm(`Remove ${member.display_name || "this member"} from the stronghold?`)) return;
     setActionUserId(member.user_id);
     setActionError("");
     try {
@@ -175,7 +175,7 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
   const refreshing = profileStatus === "loading" || listStatus === "loading";
 
   return (
-    <Modal title="Accounts & access" onClose={onClose}>
+    <Modal title="Accounts & access" onClose={onClose} className="modal--accounts">
       <div className="registered-accounts-dialog">
         <header className="registered-accounts-dialog__intro">
           <div>
@@ -249,7 +249,6 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
                             {member.display_name || "Stronghold member"}
                             {member.is_current_user ? <small>You</small> : null}
                           </strong>
-                          <span>{member.email || "Username-only access"}</span>
                           <time dateTime={member.joined_at}>{joinedDate(member.joined_at)}</time>
                         </div>
                         {locked ? (
@@ -258,7 +257,7 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onClose,
                           </span>
                         ) : (
                           <select
-                            aria-label={`Access level for ${member.display_name || member.email}`}
+                            aria-label={`Access level for ${member.display_name || "member"}`}
                             className="registered-account__role-select"
                             disabled={busy}
                             value={member.role}

@@ -1,5 +1,9 @@
+.modal.modal--accounts {
+  width: min(780px, 100%);
+}
+
 .registered-accounts-dialog {
-  width: min(780px, calc(100vw - 40px));
+  width: 100%;
 }
 
 .registered-accounts-dialog__intro {
@@ -231,7 +235,7 @@
 
 @media (max-width: 640px) {
   .registered-accounts-dialog {
-    width: min(100%, calc(100vw - 20px));
+    width: 100%;
   }
 
   .registered-accounts-dialog__intro {
