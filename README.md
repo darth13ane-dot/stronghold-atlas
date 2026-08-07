@@ -30,7 +30,7 @@ Without cloud settings, the app runs in local demo mode and stores its state in 
 
 The database uses anonymous Supabase Auth sessions, indexed membership checks, row-level security, owner-only account-management functions, and one-time invite claims. The service role key is never used by the browser.
 
-No external identity or messaging provider is required. A guest opens an invite, chooses a username, and stays connected through the anonymous session saved by that browser. Clearing browser data or moving to a new device requires a fresh invite.
+No external identity or messaging provider is required. A guest opens an invite, chooses a username, and stays connected through the anonymous session saved by that browser. The app remembers the active stronghold when the bare site is reopened, and the Invite dialog provides a reusable return link that members can bookmark. Clearing browser data or moving to a new device still requires a fresh invite.
 
 ## Deploy
 
