@@ -31,7 +31,7 @@ export const seedLayoutObjects = [
 ];
 
 export const seedState = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   name: "The Waystation",
   level: 6,
   week: 12,

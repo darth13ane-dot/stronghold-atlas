@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { facilityCatalog } from "../data/rules";
 import {
+  DEFAULT_POLYGON_POINTS,
   DEFAULT_ROOM_TYPE,
   makeId,
   normalizeRoomType,
@@ -36,6 +37,20 @@ function NumberField({ label, value, min = 0, max, onChange }) {
   );
 }
 
+function roomTypeSwatchStyle(roomType) {
+  if (roomType.shape === "round") {
+    return { "--room-type-color": roomType.color, borderRadius: "50%" };
+  }
+  if (roomType.shape === "polygon") {
+    const points = roomType.points ?? DEFAULT_POLYGON_POINTS;
+    return {
+      "--room-type-color": roomType.color,
+      clipPath: `polygon(${points.map((point) => `${point.x * 100}% ${point.y * 100}%`).join(", ")})`,
+    };
+  }
+  return { "--room-type-color": roomType.color };
+}
+
 export function RoomTypesDialog({
   roomTypes,
   selectedRoom,
@@ -50,6 +65,11 @@ export function RoomTypesDialog({
   const facility = facilityCatalog.find((item) => item.name === draft.facility);
   const maxTier = facility?.maxTier ?? 4;
   const set = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
+  const setShape = (shape) => setDraft((current) => ({
+    ...current,
+    shape,
+    ...(shape === "polygon" && !current.points ? { points: DEFAULT_POLYGON_POINTS.map((point) => ({ ...point })) } : {}),
+  }));
 
   const selectType = (roomType) => {
     setDraft(roomType);
@@ -116,7 +136,7 @@ export function RoomTypesDialog({
                 key={roomType.id}
                 onClick={() => selectType(roomType)}
               >
-                <span className="room-type-card__swatch" style={{ "--room-type-color": roomType.color }} />
+                <span className="room-type-card__swatch" style={roomTypeSwatchStyle(roomType)} />
                 <span><strong>{roomType.name}</strong><small>{roomType.facility}</small></span>
                 <Icon name="chevron" size={15} />
               </button>
@@ -145,11 +165,17 @@ export function RoomTypesDialog({
               </label>
               <label>
                 <span>Shape</span>
-                <select value={draft.shape} onChange={(event) => set("shape", event.target.value)}>
+                <select value={draft.shape} onChange={(event) => setShape(event.target.value)}>
                   <option value="rect">Rectangle</option>
                   <option value="round">Round / oval</option>
+                  <option value="polygon">Custom polygon</option>
                 </select>
               </label>
+              {draft.shape === "polygon" ? (
+                <p className="room-type-editor__shape-note">
+                  This type keeps its custom outline. Draw a room with the Custom shape tool, then use <strong>From selected room</strong> to reuse an exact outline.
+                </p>
+              ) : null}
               <label>
                 <span>Default status</span>
                 <select value={draft.status} onChange={(event) => set("status", event.target.value)}>

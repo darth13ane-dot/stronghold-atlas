@@ -4,12 +4,12 @@ A collaborative, setting-agnostic stronghold manager based on the mechanics in t
 
 The app includes:
 
-- a customizable SVG floor plan with draggable and resizable rooms plus reusable room types;
+- a customizable SVG floor plan with draggable, resizable, and freeform polygon rooms plus reusable room types;
 - editable room-to-facility assignments, tiers, capacities, and dependencies;
 - facility, downtime, roster, upkeep, and rules views;
 - undo/redo and browser autosave;
 - same-device live updates across tabs;
-- optional Supabase-backed anonymous sign-in, secure invite links, row-level access, and realtime internet sync.
+- optional Supabase-backed browser sessions, usernames, owner-managed member access, secure invite links, row-level access, and realtime internet sync.
 
 ## Run locally
 
@@ -24,11 +24,13 @@ Without cloud settings, the app runs in local demo mode and stores its state in 
 
 1. Create a Supabase project.
 2. Enable **Anonymous Sign-Ins** under Authentication → Providers.
-3. Run [202607050001_stronghold_atlas.sql](./supabase/migrations/202607050001_stronghold_atlas.sql) in the project SQL editor.
+3. Run every file in `supabase/migrations` in filename order in the project SQL editor.
 4. Copy `.env.example` to `.env.local` and fill in the project URL and public anon key.
 5. Restart the app. The first visitor creates a shared stronghold; **Invite** creates a single-use, seven-day link for an editor or viewer.
 
-The database uses authenticated anonymous users, indexed membership checks, row-level security, and one-time invite claims. The service role key is never used by the browser.
+The database uses anonymous Supabase Auth sessions, indexed membership checks, row-level security, owner-only account-management functions, and one-time invite claims. The service role key is never used by the browser.
+
+No external identity or messaging provider is required. A guest opens an invite, chooses a username, and stays connected through the anonymous session saved by that browser. Clearing browser data or moving to a new device requires a fresh invite.
 
 ## Deploy
 

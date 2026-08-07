@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cloudConfigured, connectCloudWorkspace, sendInviteLogin } from "../lib/cloud";
-import { normalizeRoomType, roomTypeFromRoom } from "../data/rooms";
+import { cloudConfigured, connectCloudWorkspace, setCurrentUsername } from "../lib/cloud";
+import { normalizePolygonPoints, normalizeRoomType, roomTypeFromRoom } from "../data/rooms";
 
 const STORAGE_KEY = "stronghold-atlas:v2";
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
+const OLDEST_SUPPORTED_SCHEMA = 2;
 const DEFAULT_FLOOR_ID = "ground";
 
 function normalizeFloors(source, seed) {
@@ -29,11 +30,13 @@ function normalizeLayoutObjects(source, seed, defaultFloorId) {
 }
 
 function normalizeState(value, seed) {
-  const source = value?.schemaVersion === SCHEMA_VERSION ? value : seed;
+  const source = value?.schemaVersion >= OLDEST_SUPPORTED_SCHEMA && value.schemaVersion <= SCHEMA_VERSION
+    ? value
+    : seed;
   const floors = normalizeFloors(source, seed);
   const defaultFloorId = floors[0]?.id ?? DEFAULT_FLOOR_ID;
   const activeFloorId = floors.some((floor) => floor.id === source.activeFloorId) ? source.activeFloorId : defaultFloorId;
-  const sourceRooms = source.rooms ?? seed.rooms;
+  const sourceRooms = Array.isArray(source.rooms) ? source.rooms : seed.rooms;
   const legacyRoomTypes = sourceRooms
     .filter((room) => room.hidden)
     .map((room) => roomTypeFromRoom(room, { id: `room-type-${room.id}`, name: room.name }));
@@ -44,6 +47,7 @@ function normalizeState(value, seed) {
       : seed.roomTypes;
   return {
     ...source,
+    schemaVersion: SCHEMA_VERSION,
     activeFloorId,
     floors,
     condition: {
@@ -57,6 +61,7 @@ function normalizeState(value, seed) {
         floorId: defaultFloorId,
         spaceType: "Operating space",
         ...room,
+        ...(room.shape === "polygon" ? { points: normalizePolygonPoints(room.points) } : {}),
       })),
     roomTypes: (sourceRoomTypes ?? []).map(normalizeRoomType),
     layoutObjects: normalizeLayoutObjects(source, seed, defaultFloorId),
@@ -78,7 +83,8 @@ export function useStronghold(seed) {
   const [syncStatus, setSyncStatus] = useState(cloudConfigured ? "connecting" : "local");
   const [syncError, setSyncError] = useState("");
   const [cloudReady, setCloudReady] = useState(false);
-  const [inviteLoginRequired, setInviteLoginRequired] = useState(false);
+  const [inviteUsernameRequired, setInviteUsernameRequired] = useState(false);
+  const [cloudConnectionVersion, setCloudConnectionVersion] = useState(0);
   const cloudRef = useRef(null);
   const remoteUpdate = useRef(false);
   const broadcastUpdate = useRef(false);
@@ -89,7 +95,7 @@ export function useStronghold(seed) {
     const channel = new BroadcastChannel("stronghold-atlas");
     channelRef.current = channel;
     channel.onmessage = ({ data }) => {
-      if (data?.schemaVersion === SCHEMA_VERSION) {
+      if (data?.schemaVersion >= OLDEST_SUPPORTED_SCHEMA && data.schemaVersion <= SCHEMA_VERSION) {
         broadcastUpdate.current = true;
         remoteUpdate.current = true;
         setState(normalizeState(data, seed));
@@ -138,11 +144,12 @@ export function useStronghold(seed) {
         }
         cloudRef.current = connection;
         setCloudReady(Boolean(connection));
+        setInviteUsernameRequired(false);
       })
       .catch((error) => {
         setCloudReady(false);
-        if (error.code === "INVITE_LOGIN_REQUIRED") {
-          setInviteLoginRequired(true);
+        if (error.code === "INVITE_USERNAME_REQUIRED") {
+          setInviteUsernameRequired(true);
           setSyncStatus("connecting");
           setSyncError("");
         } else {
@@ -155,9 +162,10 @@ export function useStronghold(seed) {
       active = false;
       cloudRef.current?.disconnect();
     };
-    // The initial snapshot is intentionally captured once for cloud bootstrapping.
+    // Cloud bootstrapping only retries after the invited user saves a username.
+    // Ordinary state changes are handled by the save effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cloudConnectionVersion]);
 
   useEffect(() => {
     if (remoteUpdate.current) {
@@ -192,5 +200,11 @@ export function useStronghold(seed) {
     return cloudRef.current.invite(role);
   }, []);
 
-  return { state, update, syncStatus, syncError, createInvite, cloudConfigured, cloudReady, inviteLoginRequired, sendInviteLogin };
+  const joinInvite = useCallback(async (username) => {
+    await setCurrentUsername(username);
+    setInviteUsernameRequired(false);
+    setCloudConnectionVersion((version) => version + 1);
+  }, []);
+
+  return { state, update, syncStatus, syncError, createInvite, cloudConfigured, cloudReady, inviteUsernameRequired, joinInvite };
 }

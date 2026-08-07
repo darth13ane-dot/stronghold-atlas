@@ -129,6 +129,18 @@
   font-weight: 650;
 }
 
+.room-type-editor__shape-note {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+  background: #f7f4ee;
+  border-left: 3px solid var(--accent);
+  border-radius: 3px;
+}
+
 .room-type-editor__grid input,
 .room-type-editor__grid select {
   width: 100%;

@@ -2,9 +2,11 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { facilityCatalog } from "../data/rules";
 import {
   createRoomFromType,
+  DEFAULT_POLYGON_POINTS,
   DEFAULT_ROOM_TYPE,
   getRoomUpgrade,
   makeId,
+  normalizePolygonPoints,
   ROOM_SPACE_OPTIONS,
   ROOM_STATUS_OPTIONS,
 } from "../data/rooms";
@@ -21,6 +23,7 @@ const EMPTY_ARRAY = [];
 const toolItems = [
   { id: "select", label: "Select", icon: "select" },
   { id: "add", label: "Add room", icon: "add" },
+  { id: "polygon", label: "Custom shape", icon: "polygon" },
   { id: "space", label: "Add space", icon: "plan" },
   { id: "hallway", label: "Add hall", icon: "wall" },
 ];
@@ -71,8 +74,36 @@ function clampItemToCanvas(item, minSize) {
   };
 }
 
+function polygonPointsString(item, inset = 0) {
+  const points = normalizePolygonPoints(item.points);
+  const width = Math.max(1, item.w - inset * 2);
+  const height = Math.max(1, item.h - inset * 2);
+  return points
+    .map((point) => `${item.x + inset + point.x * width},${item.y + inset + point.y * height}`)
+    .join(" ");
+}
+
+function draftPointsString(points) {
+  return points.map((point) => `${point.x},${point.y}`).join(" ");
+}
+
+function polygonArea(points) {
+  const normalized = normalizePolygonPoints(points);
+  return Math.abs(normalized.reduce((sum, point, index) => {
+    const next = normalized[(index + 1) % normalized.length];
+    return sum + point.x * next.y - next.x * point.y;
+  }, 0)) / 2;
+}
+
+function shapeLabel(shape) {
+  if (shape === "round") return "round";
+  if (shape === "polygon") return "custom polygon";
+  return "rectangular";
+}
+
 function itemArea(item) {
   if (item.shape === "round") return Math.PI * (item.w / 2) * (item.h / 2);
+  if (item.shape === "polygon") return polygonArea(item.points) * item.w * item.h;
   return item.w * item.h;
 }
 
@@ -158,6 +189,9 @@ function Furniture({ room }) {
 }
 
 function ItemShape({ item, className, inset = 0, fill }) {
+  if (item.shape === "polygon") {
+    return <polygon className={className} points={polygonPointsString(item, inset)} fill={fill} />;
+  }
   if (item.shape === "round") {
     return (
       <ellipse
@@ -215,7 +249,7 @@ const FloorLayoutObject = memo(function FloorLayoutObject({ item, selected, onSe
       onKeyDown={(event) => handleItemKeyDown(event, "layoutObject", item.id, onActivate)}
       role="button"
       tabIndex="0"
-      aria-label={`${item.name}, ${type.label}, ${item.shape === "round" ? "round" : "rectangular"}`}
+      aria-label={`${item.name}, ${type.label}, ${shapeLabel(item.shape)}`}
     >
       <ItemShape className="floor-room__surface" item={item} fill={item.color ?? type.color} />
       <ItemShape className="floor-room__wall" item={item} />
@@ -231,7 +265,7 @@ const FloorLayoutObject = memo(function FloorLayoutObject({ item, selected, onSe
 
 const FloorRoom = memo(function FloorRoom({ room, selected, onSelect, onResize, onActivate }) {
   const labelSize = room.w < 150 ? 16 : room.w < 250 ? 20 : 25;
-  const isRound = room.shape === "round";
+  const usesShapeClip = room.shape !== "rect";
   const clipId = `room-clip-${room.id}`;
 
   return (
@@ -241,14 +275,14 @@ const FloorRoom = memo(function FloorRoom({ room, selected, onSelect, onResize, 
       onKeyDown={(event) => handleItemKeyDown(event, "room", room.id, onActivate)}
       role="button"
       tabIndex="0"
-      aria-label={`${room.name}, ${isRound ? "round" : "rectangular"} room, ${room.facility}, tier ${room.tier}`}
+      aria-label={`${room.name}, ${shapeLabel(room.shape)} room, ${room.facility}, tier ${room.tier}`}
     >
-      {isRound ? <defs><clipPath id={clipId}><ItemShape item={room} inset={6} /></clipPath></defs> : null}
+      {usesShapeClip ? <defs><clipPath id={clipId}><ItemShape item={room} inset={6} /></clipPath></defs> : null}
       <ItemShape className="floor-room__surface" item={room} fill={room.color} />
       {room.w > 90 && room.h > 80 ? <ItemShape className="floor-room__inner-line" item={room} inset={9} /> : null}
       <ItemShape className="floor-room__wall" item={room} />
-      <g clipPath={isRound ? `url(#${clipId})` : undefined}><Furniture room={room} /></g>
-      <path className="floor-room__door" d={`M${room.x + room.w * 0.44} ${room.y + room.h}h${room.w * 0.12}`} />
+      <g clipPath={usesShapeClip ? `url(#${clipId})` : undefined}><Furniture room={room} /></g>
+      {room.shape !== "polygon" ? <path className="floor-room__door" d={`M${room.x + room.w * 0.44} ${room.y + room.h}h${room.w * 0.12}`} /> : null}
       <text className="floor-room__label" x={room.x + room.w / 2} y={room.y + room.h * 0.72} fontSize={labelSize}>
         {room.name}
       </text>
@@ -298,6 +332,7 @@ export function PlanEditor({ state, updateState, onToast }) {
   const [interaction, setInteraction] = useState(null);
   const [roomTypesOpen, setRoomTypesOpen] = useState(false);
   const [pendingRoomType, setPendingRoomType] = useState(null);
+  const [polygonDraft, setPolygonDraft] = useState([]);
   const svgRef = useRef(null);
   const interactionChangedRef = useRef(false);
 
@@ -373,9 +408,12 @@ export function PlanEditor({ state, updateState, onToast }) {
   const pointerToCanvas = useCallback(
     (event) => {
       const bounds = svgRef.current.getBoundingClientRect();
+      const scale = Math.min(bounds.width / viewBox.width, bounds.height / viewBox.height);
+      const renderedWidth = viewBox.width * scale;
+      const offsetX = (bounds.width - renderedWidth) / 2;
       return {
-        x: viewBox.x + ((event.clientX - bounds.left) / bounds.width) * viewBox.width,
-        y: viewBox.y + ((event.clientY - bounds.top) / bounds.height) * viewBox.height,
+        x: viewBox.x + (event.clientX - bounds.left - offsetX) / scale,
+        y: viewBox.y + (event.clientY - bounds.top) / scale,
       };
     },
     [viewBox],
@@ -383,9 +421,9 @@ export function PlanEditor({ state, updateState, onToast }) {
 
   const beginMove = useCallback(
     (event, type, item) => {
+      if (tool !== "select") return;
       event.stopPropagation();
       setSelection({ type, id: item.id });
-      if (tool !== "select") return;
       event.currentTarget.setPointerCapture?.(event.pointerId);
       interactionChangedRef.current = false;
       setInteraction({
@@ -402,8 +440,8 @@ export function PlanEditor({ state, updateState, onToast }) {
 
   const beginResize = useCallback(
     (event, type, item, handle) => {
-      event.stopPropagation();
       if (tool !== "select") return;
+      event.stopPropagation();
       event.currentTarget.setPointerCapture?.(event.pointerId);
       setSelection({ type, id: item.id });
       interactionChangedRef.current = false;
@@ -503,6 +541,7 @@ export function PlanEditor({ state, updateState, onToast }) {
       setSelection({ type: "room", id });
       setTool("select");
       setPendingRoomType(null);
+      setPolygonDraft([]);
       setEditing(true);
       onToast(roomType ? `${room.name} placed on the current floor` : "Room added to the current floor");
     },
@@ -532,6 +571,54 @@ export function PlanEditor({ state, updateState, onToast }) {
       onToast(`${template.label} added to the current floor`);
     },
     [activeFloorId, commitPlanPatch, layoutObjects, onToast],
+  );
+
+  const finishPolygonRoom = useCallback(
+    (points = polygonDraft) => {
+      if (points.length < 3) {
+        onToast("Add at least three corners before finishing the room");
+        return false;
+      }
+
+      const minX = Math.min(...points.map((point) => point.x));
+      const minY = Math.min(...points.map((point) => point.y));
+      const maxX = Math.max(...points.map((point) => point.x));
+      const maxY = Math.max(...points.map((point) => point.y));
+      const width = maxX - minX;
+      const height = maxY - minY;
+      if (width < MIN_ROOM_SIZE || height < MIN_ROOM_SIZE) {
+        onToast(`Custom rooms must be at least ${MIN_ROOM_SIZE} by ${MIN_ROOM_SIZE} on the plan`);
+        return false;
+      }
+
+      const id = makeId("room");
+      const room = createRoomFromType({
+        ...DEFAULT_ROOM_TYPE,
+        shape: "polygon",
+        points: points.map((point) => ({
+          x: (point.x - minX) / width,
+          y: (point.y - minY) / height,
+        })),
+        w: width,
+        h: height,
+      }, {
+        id,
+        roomTypeId: null,
+        name: "Custom room",
+        floorId: activeFloorId,
+        x: minX,
+        y: minY,
+      });
+
+      commitPlanPatch({ rooms: [...rooms, room] });
+      setSelection({ type: "room", id });
+      setPolygonDraft([]);
+      setTool("select");
+      setEditing(true);
+      onToast("Custom-shaped room added");
+      return true;
+    },
+    [activeFloorId, commitPlanPatch, onToast, polygonDraft, rooms],
   );
 
   const saveRoomType = useCallback(
@@ -566,6 +653,7 @@ export function PlanEditor({ state, updateState, onToast }) {
   const placeRoomType = useCallback(
     (roomType) => {
       setPendingRoomType(roomType);
+      setPolygonDraft([]);
       setTool("room-type");
       setRoomTypesOpen(false);
       onToast(`Choose where to place ${roomType.name}`);
@@ -578,6 +666,28 @@ export function PlanEditor({ state, updateState, onToast }) {
   }, []);
 
   const handleCanvasPointerDown = (event) => {
+    if (event.button !== 0) return;
+    if (tool === "polygon") {
+      const rawPoint = pointerToCanvas(event);
+      const point = {
+        x: snap(Math.max(0, Math.min(CANVAS_WIDTH, rawPoint.x))),
+        y: snap(Math.max(0, Math.min(CANVAS_HEIGHT, rawPoint.y))),
+      };
+      const firstPoint = polygonDraft[0];
+      const closesShape = polygonDraft.length >= 3
+        && firstPoint
+        && Math.hypot(point.x - firstPoint.x, point.y - firstPoint.y) <= 18;
+      if (closesShape) {
+        finishPolygonRoom();
+        return;
+      }
+      if (polygonDraft.length >= 24) {
+        finishPolygonRoom();
+        return;
+      }
+      setPolygonDraft((current) => [...current, point]);
+      return;
+    }
     if (tool === "add") addRoom(pointerToCanvas(event));
     if (tool === "room-type" && pendingRoomType) addRoom(pointerToCanvas(event), pendingRoomType);
     if (tool === "space" || tool === "hallway") addLayoutObject(tool, pointerToCanvas(event));
@@ -609,6 +719,13 @@ export function PlanEditor({ state, updateState, onToast }) {
     },
     [selectedRoom, updateState],
   );
+
+  const changeRoomShape = (shape) => {
+    updateRoom({
+      shape,
+      ...(shape === "polygon" ? { points: normalizePolygonPoints(selectedRoom?.points ?? DEFAULT_POLYGON_POINTS) } : {}),
+    });
+  };
 
   const updateLayoutObject = useCallback(
     (patch) => {
@@ -717,9 +834,29 @@ export function PlanEditor({ state, updateState, onToast }) {
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key !== "Delete") return;
       if (isTextEntryTarget(event.target)) return;
       if (document.querySelector('[role="dialog"]')) return;
+
+      if (tool === "polygon") {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setPolygonDraft([]);
+          setTool("select");
+          return;
+        }
+        if (event.key === "Backspace") {
+          event.preventDefault();
+          setPolygonDraft((current) => current.slice(0, -1));
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finishPolygonRoom();
+        }
+        return;
+      }
+
+      if (event.key !== "Delete") return;
       if (!selectedItem) return;
       event.preventDefault();
       removeSelected();
@@ -727,7 +864,7 @@ export function PlanEditor({ state, updateState, onToast }) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [removeSelected, selectedItem]);
+  }, [finishPolygonRoom, removeSelected, selectedItem, tool]);
 
   const addFloor = () => {
     const id = makeId("floor");
@@ -764,7 +901,16 @@ export function PlanEditor({ state, updateState, onToast }) {
       <div className="plan-editor__toolbar" aria-label="Floor plan tools">
         <div className="toolbar-group toolbar-group--tools">
           {toolItems.map((item) => (
-            <ToolButton key={item.id} item={item} active={tool === item.id} onClick={() => { setTool(item.id); setPendingRoomType(null); }} />
+            <ToolButton
+              key={item.id}
+              item={item}
+              active={tool === item.id}
+              onClick={() => {
+                setTool(item.id);
+                setPendingRoomType(null);
+                if (item.id !== "polygon") setPolygonDraft([]);
+              }}
+            />
           ))}
           <button className="tool-button" onClick={() => setRoomTypesOpen(true)} title="Create and place reusable room types">
             <Icon name="types" size={19} />
@@ -814,6 +960,7 @@ export function PlanEditor({ state, updateState, onToast }) {
             ref={svgRef}
             viewBox={viewBox.string}
             preserveAspectRatio="xMidYMin meet"
+            onPointerDown={handleCanvasPointerDown}
             onPointerMove={handlePointerMove}
             onPointerLeave={finishInteraction}
             aria-label={`Interactive stronghold floor plan, ${activeFloor?.name ?? "current floor"}`}
@@ -827,8 +974,23 @@ export function PlanEditor({ state, updateState, onToast }) {
                 <path d="M75 0H0V75" fill="none" stroke="#c8c2b7" strokeWidth="1" />
               </pattern>
             </defs>
-            <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#f7f4ee" onPointerDown={handleCanvasPointerDown} />
+            <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#f7f4ee" />
             <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#major-grid)" pointerEvents="none" />
+            {polygonDraft.length ? (
+              <g className="polygon-draft" pointerEvents="none">
+                {polygonDraft.length >= 3 ? <polygon points={draftPointsString(polygonDraft)} /> : null}
+                <polyline points={draftPointsString(polygonDraft)} />
+                {polygonDraft.map((point, index) => (
+                  <circle
+                    className={index === 0 && polygonDraft.length >= 3 ? "polygon-draft__point polygon-draft__point--finish" : "polygon-draft__point"}
+                    cx={point.x}
+                    cy={point.y}
+                    key={`${point.x}-${point.y}-${index}`}
+                    r={index === 0 ? 8 : 6}
+                  />
+                ))}
+              </g>
+            ) : null}
             <g className="north-mark" transform="translate(24 28)">
               <text x="0" y="0">N</text>
               <path d="m0 8-6 12h12z" />
@@ -855,6 +1017,13 @@ export function PlanEditor({ state, updateState, onToast }) {
             ))}
           </svg>
           {tool === "add" ? <div className="canvas-hint">Click anywhere to place a room</div> : null}
+          {tool === "polygon" ? (
+            <div className="canvas-hint" aria-live="polite">
+              {polygonDraft.length < 3
+                ? `Click each corner of the room · ${polygonDraft.length}/3 minimum`
+                : "Click the first corner or press Enter to finish · Backspace removes a corner · Escape cancels"}
+            </div>
+          ) : null}
           {tool === "room-type" && pendingRoomType ? <div className="canvas-hint">Click anywhere to place {pendingRoomType.name}</div> : null}
           {tool === "space" ? <div className="canvas-hint">Click anywhere to place an operating space</div> : null}
           {tool === "hallway" ? <div className="canvas-hint">Click anywhere to place a hallway</div> : null}
@@ -918,9 +1087,10 @@ export function PlanEditor({ state, updateState, onToast }) {
                     </select>
                   </InspectorField>
                   <InspectorField label="Shape">
-                    <select value={selectedRoom.shape ?? "rect"} onChange={(event) => updateRoom({ shape: event.target.value })} disabled={!editing} aria-label="Room shape">
+                    <select value={selectedRoom.shape ?? "rect"} onChange={(event) => changeRoomShape(event.target.value)} disabled={!editing} aria-label="Room shape">
                       <option value="rect">Rectangle</option>
                       <option value="round">Round / oval</option>
+                      <option value="polygon">Custom polygon</option>
                     </select>
                   </InspectorField>
                   <InspectorField label="Status">
@@ -1018,7 +1188,7 @@ export function PlanEditor({ state, updateState, onToast }) {
                     <Icon name="lock" size={14} />
                   </button>
                 ))}
-                {!planRooms.length && !planObjects.length ? <p className="layers__empty">This floor is empty. Add a room, space, or hallway.</p> : null}
+                {!planRooms.length && !planObjects.length ? <p className="layers__empty">This floor is empty. Add a room, custom shape, space, or hallway.</p> : null}
               </div>
             </div>
           </aside>
@@ -1033,6 +1203,7 @@ export function PlanEditor({ state, updateState, onToast }) {
             </div>
             <div className="inspector__actions">
               <button className="button button--primary" onClick={() => addRoom()}><Icon name="plus" size={17} /> Add room</button>
+              <button className="button button--secondary" onClick={() => { setTool("polygon"); setPolygonDraft([]); }}><Icon name="polygon" size={17} /> Draw custom room</button>
               <button className="button button--secondary" onClick={() => setRoomTypesOpen(true)}><Icon name="types" size={17} /> Room types</button>
               <button className="button button--secondary" onClick={() => addLayoutObject("space")}><Icon name="plan" size={17} /> Add operating space</button>
               <button className="button button--secondary" onClick={() => addLayoutObject("hallway")}><Icon name="wall" size={17} /> Add hallway</button>

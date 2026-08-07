@@ -743,6 +743,31 @@ button:disabled {
   pointer-events: none;
 }
 
+.polygon-draft polygon {
+  fill: rgb(148 100 72 / 0.14);
+  stroke: none;
+}
+
+.polygon-draft polyline {
+  fill: none;
+  stroke: var(--accent-dark);
+  stroke-width: 3;
+  stroke-dasharray: 8 5;
+  stroke-linejoin: round;
+}
+
+.polygon-draft__point {
+  fill: #fff;
+  stroke: var(--accent-dark);
+  stroke-width: 3;
+}
+
+.polygon-draft__point--finish {
+  fill: var(--accent);
+  stroke: #fff;
+  filter: drop-shadow(0 0 3px rgb(82 50 35 / 0.55));
+}
+
 .inspector {
   min-width: 0;
   padding: 19px 14px 16px;

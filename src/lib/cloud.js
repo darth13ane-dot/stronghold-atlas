@@ -17,17 +17,25 @@ async function getClient() {
   return clientPromise;
 }
 
-async function ensureSession(client, requirePersistentUser = false) {
+async function ensureSession(client) {
   const { data } = await client.auth.getSession();
-  if (data.session && (!requirePersistentUser || !data.session.user.is_anonymous)) return data.session;
-  if (requirePersistentUser) {
-    const error = new Error("Sign in to accept this invitation.");
-    error.code = "INVITE_LOGIN_REQUIRED";
-    throw error;
-  }
+  if (data.session) return data.session;
   const { data: signedIn, error } = await client.auth.signInAnonymously();
   if (error) throw error;
+  if (!signedIn.session) throw new Error("Supabase did not create a browser session.");
   return signedIn.session;
+}
+
+async function readCurrentUsername(client) {
+  const { data, error } = await client.rpc("get_current_username");
+  if (error) throw error;
+  return data ?? "";
+}
+
+function getStrongholdId() {
+  const strongholdId = new URLSearchParams(window.location.search).get("stronghold");
+  if (!strongholdId) throw new Error("The cloud workspace is still connecting.");
+  return strongholdId;
 }
 
 export async function connectCloudWorkspace(localState, onRemoteState, onStatus) {
@@ -37,11 +45,17 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
   onStatus("connecting");
   const params = new URLSearchParams(window.location.search);
   const inviteToken = params.get("invite");
-  const session = await ensureSession(client, Boolean(inviteToken));
+  const session = await ensureSession(client);
   const userId = session.user.id;
   let strongholdId = params.get("stronghold");
 
   if (inviteToken) {
+    const username = await readCurrentUsername(client);
+    if (!username) {
+      const error = new Error("Choose a username to accept this invitation.");
+      error.code = "INVITE_USERNAME_REQUIRED";
+      throw error;
+    }
     const { data, error } = await client.rpc("accept_stronghold_invite", { p_token: inviteToken });
     if (error) throw error;
     strongholdId = data;
@@ -111,8 +125,7 @@ export async function listRegisteredAccounts() {
   if (!client) throw new Error("Cloud sync is not configured.");
 
   await ensureSession(client);
-  const strongholdId = new URLSearchParams(window.location.search).get("stronghold");
-  if (!strongholdId) throw new Error("The cloud workspace is still connecting.");
+  const strongholdId = getStrongholdId();
 
   const { data, error } = await client.rpc("list_stronghold_members", {
     p_stronghold_id: strongholdId,
@@ -121,12 +134,42 @@ export async function listRegisteredAccounts() {
   return data ?? [];
 }
 
-export async function sendInviteLogin(email) {
+export async function getCurrentUsername() {
   const client = await getClient();
-  if (!client) throw new Error("Cloud login is not configured.");
-  const { error } = await client.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.href },
+  if (!client) throw new Error("Cloud sync is not configured.");
+  await ensureSession(client);
+  return readCurrentUsername(client);
+}
+
+export async function setCurrentUsername(username) {
+  const client = await getClient();
+  if (!client) throw new Error("Cloud sync is not configured.");
+  await ensureSession(client);
+  const { data, error } = await client.rpc("set_current_username", { p_username: username });
+  if (error) throw error;
+  return data;
+}
+
+export async function updateRegisteredAccountRole(userId, role) {
+  const client = await getClient();
+  if (!client) throw new Error("Cloud sync is not configured.");
+  await ensureSession(client);
+  const { data, error } = await client.rpc("update_stronghold_member_role", {
+    p_stronghold_id: getStrongholdId(),
+    p_user_id: userId,
+    p_role: role,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function removeRegisteredAccount(userId) {
+  const client = await getClient();
+  if (!client) throw new Error("Cloud sync is not configured.");
+  await ensureSession(client);
+  const { error } = await client.rpc("remove_stronghold_member", {
+    p_stronghold_id: getStrongholdId(),
+    p_user_id: userId,
   });
   if (error) throw error;
 }
