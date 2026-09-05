@@ -120,7 +120,7 @@ async function upgradeCurrentIdentity(client, username, pin) {
 async function readMostRecentStronghold(client) {
   const { data, error } = await client
     .from("strongholds")
-    .select("id,state")
+    .select("id")
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -178,14 +178,12 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
   const session = await requireSession(client, inviteToken ? "PIN_JOIN_REQUIRED" : "PIN_SIGNIN_REQUIRED");
   const userId = session.user.id;
   let strongholdId = params.get("stronghold");
-  let restoredState = null;
 
   if (!inviteToken && !strongholdId) {
     strongholdId = readRememberedStrongholdId();
     if (!strongholdId) {
       const recentStronghold = await readMostRecentStronghold(client);
       strongholdId = recentStronghold?.id ?? "";
-      restoredState = recentStronghold?.state ?? null;
     }
   }
 
@@ -207,17 +205,19 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
       .from("strongholds")
       .insert({ id: strongholdId, name: localState.name, state: localState, created_by: userId });
     if (error) throw error;
-  } else if (restoredState) {
-    onRemoteState(restoredState);
-  } else {
+  }
+
+  const read = async () => {
     const { data, error } = await client
       .from("strongholds")
-      .select("state")
+      .select("state,updated_at")
       .eq("id", strongholdId)
       .single();
     if (error) throw error;
-    if (data?.state) onRemoteState(data.state);
-  }
+    return { state: data.state, version: data.updated_at };
+  };
+  const initial = await read();
+  onRemoteState(initial);
 
   rememberStrongholdId(strongholdId);
   replaceStrongholdLocation(params, strongholdId);
@@ -228,25 +228,35 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
       "postgres_changes",
       { event: "UPDATE", schema: "public", table: "strongholds", filter: `id=eq.${strongholdId}` },
       (payload) => {
-        if (payload.new?.state) onRemoteState(payload.new.state);
+        if (payload.new?.state) onRemoteState({ state: payload.new.state, version: payload.new.updated_at });
       },
     )
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") onStatus("online");
+      if (status === "SUBSCRIBED") {
+        // Refresh after subscribing/reconnecting to cover updates missed between reads.
+        read().then(onRemoteState).catch(() => onStatus("error"));
+      }
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") onStatus("error");
     });
 
   return {
     id: strongholdId,
     userId,
-    save: async (state) => {
-      const { error } = await client
+    initial,
+    read,
+    save: async (state, version) => {
+      const { data, error } = await client
         .from("strongholds")
-        .update({ name: state.name, state, updated_at: new Date().toISOString() })
+        .update({ name: state.name, state })
         .eq("id", strongholdId)
-        .select("id")
-        .single();
+        .eq("updated_at", version)
+        .select("state,updated_at")
+        .maybeSingle();
       if (error) throw error;
+      if (data) return { saved: true, snapshot: { state: data.state, version: data.updated_at } };
+      const snapshot = await read();
+      if (snapshot.version === version) throw new Error("Your changes were not saved. You may no longer have permission to edit this stronghold.");
+      return { saved: false, snapshot };
     },
     invite: async (role = "editor") => {
       const { data, error } = await client.rpc("create_stronghold_invite", {

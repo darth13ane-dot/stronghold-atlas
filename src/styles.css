@@ -453,7 +453,15 @@ button:disabled {
 }
 
 .app-content--plan {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+.app-content--plan > .plan-editor {
+  flex: 1;
+  min-height: 0;
+  height: auto;
 }
 
 .icon-button {
@@ -782,9 +790,36 @@ button:disabled {
 
 .inspector__header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
   padding: 0 2px 15px;
+}
+
+.inspector__header > div:first-child {
+  min-width: 0;
+  flex: 1 1 150px;
+  overflow-wrap: anywhere;
+}
+
+.sync-error-banner {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  color: #742e1c;
+  background: #fff0e9;
+  border-bottom: 1px solid #c4826d;
+}
+
+.sync-error-banner > span {
+  flex: 1 1 300px;
+}
+
+.plan-status__saved.plan-status__saved--error {
+  color: #ffc0a8;
 }
 
 .inspector__header-actions {
@@ -2445,9 +2480,9 @@ button:disabled {
   }
 
   .inspector__tags {
-    position: absolute;
-    top: 42px;
-    right: 16px;
+    position: static;
+    flex-wrap: wrap;
+    padding-bottom: 10px;
   }
 
   .inspector__tags .status-tag--neutral {

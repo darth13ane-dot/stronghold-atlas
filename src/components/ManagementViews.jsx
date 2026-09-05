@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { facilityCatalog, repairTemplates, ruleSections, tierCosts, upkeepBands } from "../data/rules";
 import { createRoomFromType, makeId, roomTypeFromFacility } from "../data/rooms";
+import { updateProject } from "../lib/projects.js";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 import "./Roster.css";
@@ -266,15 +267,11 @@ export function Downtime({ state, updateState, onToast }) {
   const roomMap = useMemo(() => new Map(state.rooms.map((room) => [room.id, room.name])), [state.rooms]);
 
   const advance = (project) => {
-    updateState((current) => ({
-      ...current,
-      projects: current.projects.map((item) => {
-        if (item.id !== project.id) return item;
-        if (item.status === "Planned") return { ...item, status: "In progress" };
-        if (item.status === "In progress" && item.progress + 1 >= item.total) return { ...item, progress: item.total, status: "Complete" };
-        if (item.status === "In progress") return { ...item, progress: item.progress + 1 };
-        return item;
-      }),
+    updateState((current) => updateProject(current, project.id, (item) => {
+      if (item.status === "Planned") return { ...item, status: "In progress" };
+      if (item.status === "In progress" && item.progress + 1 >= item.total) return { ...item, progress: item.total, status: "Complete" };
+      if (item.status === "In progress") return { ...item, progress: item.progress + 1 };
+      return item;
     }));
     onToast(project.status === "Planned" ? "Project started" : "Project advanced one week");
   };
@@ -299,17 +296,7 @@ export function Downtime({ state, updateState, onToast }) {
   };
 
   const saveProject = (project) => {
-    updateState((current) => {
-      const previous = current.projects.find((item) => item.id === project.id);
-      const projectRenamed = previous && previous.name !== project.name;
-      return {
-        ...current,
-        projects: current.projects.map((item) => item.id === project.id ? project : item),
-        people: projectRenamed
-          ? current.people.map((person) => person.assignment === previous.name ? { ...person, assignment: project.name } : person)
-          : current.people,
-      };
-    });
+    updateState((current) => updateProject(current, project.id, project));
     onToast("Task updated");
   };
 

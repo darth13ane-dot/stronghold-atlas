@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { applyChanges, reverseChanges, stateChanges } from "../lib/stateChanges.js";
 import { facilityCatalog } from "../data/rules";
 import {
   createRoomFromType,
@@ -314,7 +315,8 @@ function InspectorField({ label, children, className = "" }) {
   );
 }
 
-export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, onToast }) {
+export function PlanEditor({ state, updateState, syncStatus = "local", activeFloorId, onFloorChange, onToast }) {
+  const saveLabel = { local: "Local only", online: "Saved", saving: "Saving…", connecting: "Connecting…", error: "Unsaved changes" }[syncStatus];
   const rooms = state.rooms ?? EMPTY_ARRAY;
   const roomTypes = state.roomTypes ?? EMPTY_ARRAY;
   const layoutObjects = state.layoutObjects ?? EMPTY_ARRAY;
@@ -354,25 +356,19 @@ export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, o
     )
     : false;
 
-  const currentSnapshot = useMemo(
-    () => ({ rooms, layoutObjects, floors }),
-    [floors, layoutObjects, rooms],
-  );
-
-  const applyPlanPatch = useCallback(
-    (patch) => {
-      updateState((current) => ({ ...current, ...patch }));
-    },
-    [updateState],
-  );
-
   const commitPlanPatch = useCallback(
     (patch) => {
-      setPast((current) => [...current.slice(-29), currentSnapshot]);
-      setFuture([]);
-      applyPlanPatch(patch);
+      updateState((current) => {
+        const next = { ...current, ...patch };
+        const changes = stateChanges(current, next);
+        if (changes.length) {
+          setPast((history) => [...history.slice(-29), changes]);
+          setFuture([]);
+        }
+        return next;
+      });
     },
-    [applyPlanPatch, currentSnapshot],
+    [updateState],
   );
 
   useEffect(() => {
@@ -426,10 +422,9 @@ export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, o
         itemId: item.id,
         start: pointerToCanvas(event),
         origin: item,
-        startSnapshot: currentSnapshot,
       });
     },
-    [currentSnapshot, pointerToCanvas, tool],
+    [pointerToCanvas, tool],
   );
 
   const beginResize = useCallback(
@@ -446,10 +441,9 @@ export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, o
         handle,
         start: pointerToCanvas(event),
         origin: item,
-        startSnapshot: currentSnapshot,
       });
     },
-    [currentSnapshot, pointerToCanvas, tool],
+    [pointerToCanvas, tool],
   );
 
   const handlePointerMove = useCallback(
@@ -491,24 +485,31 @@ export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, o
       interactionChangedRef.current = geometryChanged;
       if (!geometryChanged && !wasChanged) return;
 
-      if (interaction.itemType === "room") {
-        applyPlanPatch({ rooms: rooms.map((room) => (room.id === interaction.itemId ? nextItem : room)) });
-      } else {
-        applyPlanPatch({ layoutObjects: layoutObjects.map((item) => (item.id === interaction.itemId ? nextItem : item)) });
-      }
+      const collection = interaction.itemType === "room" ? "rooms" : "layoutObjects";
+      const { x, y, w, h } = nextItem;
+      updateState((current) => ({
+        ...current,
+        [collection]: current[collection].map((item) => item.id === interaction.itemId ? { ...item, x, y, w, h } : item),
+      }));
     },
-    [applyPlanPatch, interaction, layoutObjects, pointerToCanvas, rooms],
+    [interaction, pointerToCanvas, updateState],
   );
 
   const finishInteraction = useCallback(() => {
     if (!interaction) return;
     if (interactionChangedRef.current) {
-      setPast((current) => [...current.slice(-29), interaction.startSnapshot]);
-      setFuture([]);
+      const collection = interaction.itemType === "room" ? "rooms" : "layoutObjects";
+      const item = (collection === "rooms" ? rooms : layoutObjects).find((entry) => entry.id === interaction.itemId);
+      if (item) {
+        const geometry = ({ id, x, y, w, h }) => ({ id, x, y, w, h });
+        const changes = stateChanges({ [collection]: [geometry(interaction.origin)] }, { [collection]: [geometry(item)] });
+        setPast((current) => [...current.slice(-29), changes]);
+        setFuture([]);
+      }
     }
     interactionChangedRef.current = false;
     setInteraction(null);
-  }, [interaction]);
+  }, [interaction, layoutObjects, rooms]);
 
   useEffect(() => {
     if (!interaction) return undefined;
@@ -689,18 +690,24 @@ export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, o
 
   const undo = () => {
     if (!past.length) return;
-    const previous = past[past.length - 1];
-    setFuture((current) => [currentSnapshot, ...current].slice(0, 30));
-    setPast((current) => current.slice(0, -1));
-    applyPlanPatch(previous);
+    updateState((current) => {
+      const result = applyChanges(current, reverseChanges(past[past.length - 1]));
+      setPast((history) => history.slice(0, -1));
+      if (result.applied.length) setFuture((history) => [reverseChanges(result.applied), ...history].slice(0, 30));
+      if (result.conflicts.length) onToast("Newer edits were kept. Only unchanged parts of your action could be undone.");
+      return result.state;
+    });
   };
 
   const redo = () => {
     if (!future.length) return;
-    const next = future[0];
-    setPast((current) => [...current, currentSnapshot].slice(-30));
-    setFuture((current) => current.slice(1));
-    applyPlanPatch(next);
+    updateState((current) => {
+      const result = applyChanges(current, future[0]);
+      setFuture((history) => history.slice(1));
+      if (result.applied.length) setPast((history) => [...history, result.applied].slice(-30));
+      if (result.conflicts.length) onToast("Newer edits were kept. Only unchanged parts of your action could be redone.");
+      return result.state;
+    });
   };
 
   const updateRoom = useCallback(
@@ -797,6 +804,7 @@ export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, o
           name: `${selectedRoom.name} tier ${selectedRoom.tier + 1}`,
           type: "Upgrade",
           roomId: selectedRoom.id,
+          targetTier: selectedRoom.tier + 1,
           progress: 0,
           total: selectedRoom.upgradeWeeks,
           cost: selectedRoom.upgradeCost,
@@ -1207,7 +1215,7 @@ export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, o
         )}
       </div>
       <footer className="plan-status">
-        <span className="plan-status__ok"><Icon name="check" size={14} /></span>
+        <span className="plan-status__ok"><Icon name={syncStatus === "online" || syncStatus === "local" ? "check" : "cloud"} size={14} /></span>
         <span>{activeFloor?.name ?? "Current floor"}</span>
         <span>·</span>
         <span>{planRooms.length} rooms</span>
@@ -1216,7 +1224,7 @@ export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, o
         <span>·</span>
         <span>{planArea.toLocaleString()} sq ft</span>
         <span>·</span>
-        <span className="plan-status__saved">Autosaved</span>
+        <span className={`plan-status__saved${syncStatus === "error" ? " plan-status__saved--error" : ""}`}>{saveLabel}</span>
       </footer>
       {roomTypesOpen ? (
         <RoomTypesDialog

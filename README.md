@@ -23,6 +23,12 @@ Without cloud settings, the app runs in local demo mode and stores its state in 
 
 Choosing a floor changes only your view. Rooms, floor creation, and floor deletion still sync with collaborators. If your selected floor is removed, your view returns to the first available floor. Floor preferences stay on the current browser and are separate from shared saves and undo/redo. Open tabs can browse independently; reopening uses the last saved preference for that account and stronghold. Cloud workspaces use their authenticated realtime channels; the shared browser cache and tab broadcast are reserved for local demo mode.
 
+Cloud saves check the database version before writing and merge changes to different fields. Conflicting edits remain unsaved in the open tab with a visible message: retry after resolving the difference, or explicitly discard unsaved edits to load the shared version. Keep the tab open until saving succeeds. Undo and redo affect only the fields changed by that action and preserve newer edits; a floor containing another person's objects cannot be removed by undo.
+
+Completing an upgrade through Advance or Edit task updates the linked room tier and its next upgrade cost and duration. Reopening and completing the same task does not apply the upgrade twice. Previously completed tasks are not retroactively applied; their room tiers can be corrected manually.
+
+Run `pnpm test`, `pnpm lint`, and `pnpm build` to verify changes. After deploying collaboration updates, refresh all open tabs so every collaborator uses the new save checks.
+
 ## Turn on internet collaboration
 
 1. Create a Supabase project.

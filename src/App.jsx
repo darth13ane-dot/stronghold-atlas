@@ -289,6 +289,8 @@ export default function App() {
     update,
     syncStatus,
     syncError,
+    retrySave,
+    useSharedVersion,
     createInvite,
     cloudConfigured,
     cloudReady,
@@ -313,7 +315,7 @@ export default function App() {
 
   const content = {
     overview: <Overview state={state} updateState={update} onNavigate={navigate} />,
-    plan: <PlanEditor key={floorViewScope ?? "connecting"} state={state} updateState={update} activeFloorId={activeFloorId} onFloorChange={setActiveFloorId} onToast={showToast} />,
+    plan: <PlanEditor key={floorViewScope ?? "connecting"} state={state} updateState={update} syncStatus={syncStatus} activeFloorId={activeFloorId} onFloorChange={setActiveFloorId} onToast={showToast} />,
     facilities: <Facilities state={state} updateState={update} onToast={showToast} onNavigate={navigate} />,
     downtime: <Downtime state={state} updateState={update} onToast={showToast} />,
     roster: <Roster state={state} updateState={update} onToast={showToast} />,
@@ -340,6 +342,13 @@ export default function App() {
           </div>
         ) : null}
         <div className={active === "plan" ? "app-content app-content--plan" : "app-content"}>
+          {syncError ? (
+            <div className="sync-error-banner" role="alert">
+              <span>{syncError}</span>
+              <button className="button button--secondary" onClick={retrySave}>Retry save</button>
+              {cloudReady ? <button className="button button--secondary" onClick={useSharedVersion}>Discard my unsaved edits</button> : null}
+            </div>
+          ) : null}
           {content}
         </div>
       </div>
@@ -348,7 +357,6 @@ export default function App() {
       {dialog === "accounts" ? <RegisteredAccountsDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} onAccessChanged={refreshCloudConnection} onClose={() => setDialog(null)} onToast={showToast} /> : null}
       {accessRequired ? <AccessDialog key={accessRequired} reason={accessRequired} onCreateAccess={createAccess} onSignIn={signIn} /> : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
-      {syncError ? <span className="visually-hidden">Realtime sync error: {syncError}</span> : null}
     </div>
   );
 }

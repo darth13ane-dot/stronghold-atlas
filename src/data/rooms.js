@@ -1,4 +1,4 @@
-import { facilityCatalog, tierCosts } from "./rules";
+import { facilityCatalog, tierCosts } from "./rules.js";
 
 export const ROOM_STATUS_OPTIONS = ["Operational", "Needs repair", "Under repair", "Restricted", "Planned"];
 export const ROOM_SPACE_OPTIONS = ["Operating space", "Common area", "Support space", "Private quarters", "Defensive space", "Storage", "Exterior", "Other"];

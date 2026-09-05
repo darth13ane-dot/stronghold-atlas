@@ -6,6 +6,7 @@ import {
   signInWithUsernamePin,
 } from "../lib/cloud";
 import { normalizePolygonPoints, normalizeRoomType, roomTypeFromRoom } from "../data/rooms";
+import { createWorkspaceSync } from "../lib/workspaceSync.js";
 
 const STORAGE_KEY = "stronghold-atlas:v2";
 const SCHEMA_VERSION = 3;
@@ -91,7 +92,8 @@ export function useStronghold(seed) {
   const [accessRequired, setAccessRequired] = useState(null);
   const [cloudConnectionVersion, setCloudConnectionVersion] = useState(0);
   const cloudRef = useRef(null);
-  const remoteUpdate = useRef(false);
+  const syncRef = useRef(null);
+  const stateRef = useRef(state);
   const broadcastUpdate = useRef(false);
   const channelRef = useRef(null);
 
@@ -103,8 +105,8 @@ export function useStronghold(seed) {
     channel.onmessage = ({ data }) => {
       if (data?.schemaVersion >= OLDEST_SUPPORTED_SCHEMA && data.schemaVersion <= SCHEMA_VERSION) {
         broadcastUpdate.current = true;
-        remoteUpdate.current = true;
-        setState(normalizeState(data, seed));
+        stateRef.current = normalizeState(data, seed);
+        setState(stateRef.current);
       }
     };
     return () => {
@@ -131,21 +133,27 @@ export function useStronghold(seed) {
     if (!cloudConfigured) return undefined;
     let active = true;
     let activeConnection = null;
+    let coordinator = null;
+    let initialSnapshot = null;
     setCloudReady(false);
     setFloorViewScope(null);
 
     connectCloudWorkspace(
-      state,
-      (remoteState) => {
+      stateRef.current,
+      (snapshot) => {
         if (!active) return;
-        remoteUpdate.current = true;
-        setState(normalizeState(remoteState, seed));
+        const normalized = { ...snapshot, state: normalizeState(snapshot.state, seed) };
+        if (coordinator) coordinator.receive(normalized);
+        else {
+          initialSnapshot = normalized;
+          stateRef.current = normalized.state;
+          setState(normalized.state);
+        }
       },
       (status) => {
         if (!active) return;
-        setSyncStatus(status);
-        if (status === "online") setSyncError("");
-        if (status === "error") setSyncError("The realtime connection could not be established.");
+        if (status === "error" || !coordinator) setSyncStatus(status);
+        if (status === "error") setSyncError("The realtime connection could not be established. Retry save to reconnect.");
       },
     )
       .then((connection) => {
@@ -155,6 +163,20 @@ export function useStronghold(seed) {
         }
         activeConnection = connection;
         cloudRef.current = connection;
+        const normalizeSnapshot = (snapshot) => ({ ...snapshot, state: normalizeState(snapshot.state, seed) });
+        coordinator = createWorkspaceSync({
+          initial: initialSnapshot ?? normalizeSnapshot(connection.initial),
+          read: async () => normalizeSnapshot(await connection.read()),
+          save: async (nextState, version) => {
+            const result = await connection.save(nextState, version);
+            return { ...result, snapshot: normalizeSnapshot(result.snapshot) };
+          },
+          onState: (nextState) => { stateRef.current = nextState; setState(nextState); },
+          onStatus: (status, error) => { setSyncStatus(status); setSyncError(error); },
+        });
+        syncRef.current = coordinator;
+        setSyncStatus("online");
+        setSyncError("");
         setFloorViewScope(connection ? `${connection.id}:${connection.userId}` : null);
         setCloudReady(Boolean(connection));
         setAccessRequired(null);
@@ -179,39 +201,31 @@ export function useStronghold(seed) {
 
     return () => {
       active = false;
+      coordinator?.disconnect();
+      if (syncRef.current === coordinator) syncRef.current = null;
       activeConnection?.disconnect();
       if (cloudRef.current === activeConnection) cloudRef.current = null;
     };
     // Cloud bootstrapping only retries after the active login changes.
-    // Ordinary state changes are handled by the save effect below.
+    // Ordinary state changes are handled by the connection's save coordinator.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cloudConnectionVersion]);
 
-  useEffect(() => {
-    if (remoteUpdate.current) {
-      remoteUpdate.current = false;
-      return undefined;
-    }
-    if (!cloudRef.current) return undefined;
-    setSyncStatus("saving");
-    const timer = window.setTimeout(() => {
-      cloudRef.current
-        ?.save(state)
-        .then(() => {
-          setSyncStatus("online");
-          setSyncError("");
-        })
-        .catch((error) => {
-          setSyncStatus("error");
-          setSyncError(error.message);
-        });
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [state]);
-
   const update = useCallback((updater) => {
-    setState((current) => (typeof updater === "function" ? updater(current) : updater));
+    if (cloudConfigured) {
+      if (syncRef.current) syncRef.current.update(updater);
+      else setSyncError("Wait for the shared stronghold to connect before editing.");
+      return;
+    }
+    stateRef.current = typeof updater === "function" ? updater(stateRef.current) : updater;
+    setState(stateRef.current);
   }, []);
+
+  const retrySave = useCallback(() => {
+    if (syncRef.current) return syncRef.current.retry();
+    setCloudConnectionVersion((version) => version + 1);
+  }, []);
+  const useSharedVersion = useCallback(() => syncRef.current?.useSharedVersion(), []);
 
   const createInvite = useCallback(async (role) => {
     if (!cloudRef.current) {
@@ -242,6 +256,8 @@ export function useStronghold(seed) {
     update,
     syncStatus,
     syncError,
+    retrySave,
+    useSharedVersion,
     createInvite,
     cloudConfigured,
     cloudReady,
