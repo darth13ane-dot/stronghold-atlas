@@ -40,7 +40,7 @@ function normalizeState(value, seed) {
     : seed;
   const floors = normalizeFloors(source, seed);
   const defaultFloorId = floors[0]?.id ?? DEFAULT_FLOOR_ID;
-  const activeFloorId = floors.some((floor) => floor.id === source.activeFloorId) ? source.activeFloorId : defaultFloorId;
+  const { activeFloorId: _legacyFloorView, ...sharedSource } = source;
   const sourceRooms = Array.isArray(source.rooms) ? source.rooms : seed.rooms;
   const legacyRoomTypes = sourceRooms
     .filter((room) => room.hidden)
@@ -51,9 +51,8 @@ function normalizeState(value, seed) {
       ? legacyRoomTypes
       : seed.roomTypes;
   return {
-    ...source,
+    ...sharedSource,
     schemaVersion: SCHEMA_VERSION,
-    activeFloorId,
     floors,
     condition: {
       status: source.condition?.status ?? "Operational",
@@ -84,7 +83,8 @@ function loadInitialState(seed) {
 }
 
 export function useStronghold(seed) {
-  const [state, setState] = useState(() => loadInitialState(seed));
+  const [state, setState] = useState(() => cloudConfigured ? normalizeState(seed, seed) : loadInitialState(seed));
+  const [floorViewScope, setFloorViewScope] = useState(cloudConfigured ? null : "local");
   const [syncStatus, setSyncStatus] = useState(cloudConfigured ? "connecting" : "local");
   const [syncError, setSyncError] = useState("");
   const [cloudReady, setCloudReady] = useState(false);
@@ -96,7 +96,8 @@ export function useStronghold(seed) {
   const channelRef = useRef(null);
 
   useEffect(() => {
-    if (typeof BroadcastChannel === "undefined") return undefined;
+    // Cloud workspaces already sync through their own authenticated realtime channel.
+    if (cloudConfigured || typeof BroadcastChannel === "undefined") return undefined;
     const channel = new BroadcastChannel("stronghold-atlas");
     channelRef.current = channel;
     channel.onmessage = ({ data }) => {
@@ -113,6 +114,7 @@ export function useStronghold(seed) {
   }, [seed]);
 
   useEffect(() => {
+    if (cloudConfigured) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
@@ -129,6 +131,8 @@ export function useStronghold(seed) {
     if (!cloudConfigured) return undefined;
     let active = true;
     let activeConnection = null;
+    setCloudReady(false);
+    setFloorViewScope(null);
 
     connectCloudWorkspace(
       state,
@@ -138,6 +142,7 @@ export function useStronghold(seed) {
         setState(normalizeState(remoteState, seed));
       },
       (status) => {
+        if (!active) return;
         setSyncStatus(status);
         if (status === "online") setSyncError("");
         if (status === "error") setSyncError("The realtime connection could not be established.");
@@ -150,6 +155,7 @@ export function useStronghold(seed) {
         }
         activeConnection = connection;
         cloudRef.current = connection;
+        setFloorViewScope(connection ? `${connection.id}:${connection.userId}` : null);
         setCloudReady(Boolean(connection));
         setAccessRequired(null);
       })
@@ -232,6 +238,7 @@ export function useStronghold(seed) {
 
   return {
     state,
+    floorViewScope,
     update,
     syncStatus,
     syncError,

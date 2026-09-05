@@ -314,12 +314,11 @@ function InspectorField({ label, children, className = "" }) {
   );
 }
 
-export function PlanEditor({ state, updateState, onToast }) {
+export function PlanEditor({ state, updateState, activeFloorId, onFloorChange, onToast }) {
   const rooms = state.rooms ?? EMPTY_ARRAY;
   const roomTypes = state.roomTypes ?? EMPTY_ARRAY;
   const layoutObjects = state.layoutObjects ?? EMPTY_ARRAY;
   const floors = useMemo(() => sortFloors(state.floors?.length ? state.floors : [{ id: DEFAULT_FLOOR_ID, name: "Ground Floor", order: 0 }]), [state.floors]);
-  const activeFloorId = floors.some((floor) => floor.id === state.activeFloorId) ? state.activeFloorId : floors[0]?.id ?? DEFAULT_FLOOR_ID;
   const activeFloor = floors.find((floor) => floor.id === activeFloorId) ?? floors[0];
   const planRooms = useMemo(() => rooms.filter((room) => !room.hidden && isOnFloor(room, activeFloorId)), [activeFloorId, rooms]);
   const planObjects = useMemo(() => layoutObjects.filter((item) => isOnFloor(item, activeFloorId)), [activeFloorId, layoutObjects]);
@@ -356,8 +355,8 @@ export function PlanEditor({ state, updateState, onToast }) {
     : false;
 
   const currentSnapshot = useMemo(
-    () => ({ rooms, layoutObjects, floors, activeFloorId }),
-    [activeFloorId, floors, layoutObjects, rooms],
+    () => ({ rooms, layoutObjects, floors }),
+    [floors, layoutObjects, rooms],
   );
 
   const applyPlanPatch = useCallback(
@@ -375,11 +374,6 @@ export function PlanEditor({ state, updateState, onToast }) {
     },
     [applyPlanPatch, currentSnapshot],
   );
-
-  useEffect(() => {
-    if (state.activeFloorId === activeFloorId) return;
-    applyPlanPatch({ activeFloorId });
-  }, [activeFloorId, applyPlanPatch, state.activeFloorId]);
 
   useEffect(() => {
     const selectionIsVisible =
@@ -753,16 +747,15 @@ export function PlanEditor({ state, updateState, onToast }) {
       if (selectedType === "room") {
         return {
           ...current,
-          activeFloorId: floorId,
           rooms: current.rooms.map((room) => (room.id === selectedItem.id ? { ...room, floorId } : room)),
         };
       }
       return {
         ...current,
-        activeFloorId: floorId,
         layoutObjects: (current.layoutObjects ?? []).map((item) => (item.id === selectedItem.id ? { ...item, floorId } : item)),
       };
     });
+    onFloorChange(floorId);
   };
 
   const selectFacility = (facilityName) => {
@@ -869,7 +862,8 @@ export function PlanEditor({ state, updateState, onToast }) {
   const addFloor = () => {
     const id = makeId("floor");
     const nextFloors = [...floors, { id, name: `Floor ${floors.length + 1}`, order: floors.length }];
-    commitPlanPatch({ floors: nextFloors, activeFloorId: id });
+    commitPlanPatch({ floors: nextFloors });
+    onFloorChange(id);
     setSelection(null);
     onToast("New floor added");
   };
@@ -881,7 +875,8 @@ export function PlanEditor({ state, updateState, onToast }) {
       .filter((floor) => floor.id !== activeFloorId)
       .map((floor, index) => ({ ...floor, order: index }));
     const nextActiveFloorId = nextFloors[0]?.id ?? DEFAULT_FLOOR_ID;
-    commitPlanPatch({ floors: nextFloors, activeFloorId: nextActiveFloorId });
+    commitPlanPatch({ floors: nextFloors });
+    onFloorChange(nextActiveFloorId);
     setSelection(getFirstSelection(rooms, layoutObjects, nextActiveFloorId));
     onToast("Empty floor removed");
   };
@@ -918,7 +913,7 @@ export function PlanEditor({ state, updateState, onToast }) {
           </button>
         </div>
         <div className="toolbar-group toolbar-group--floors">
-          <select className="tool-button floor-select" value={activeFloorId} onChange={(event) => applyPlanPatch({ activeFloorId: event.target.value })} aria-label="Choose floor">
+          <select className="tool-button floor-select" value={activeFloorId} onChange={(event) => onFloorChange(event.target.value)} aria-label="Choose floor" title="Your floor view — other users keep their own selection">
             {floors.map((floor) => <option key={floor.id} value={floor.id}>{floor.name}</option>)}
           </select>
           <button className="tool-button tool-button--icon" onClick={addFloor} aria-label="Add floor">

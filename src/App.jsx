@@ -7,6 +7,7 @@ import { PlanEditor } from "./components/PlanEditor";
 import { RegisteredAccountsDialog } from "./components/RegisteredAccountsDialog";
 import { seedState } from "./data/seed";
 import { useStronghold } from "./hooks/useStronghold";
+import { useFloorView } from "./hooks/useFloorView";
 import { getStrongholdReturnLink } from "./lib/cloud";
 import { normalizePin, PIN_PATTERN, PIN_REQUIREMENTS } from "./lib/pins";
 import { normalizeUsername, USERNAME_PATTERN, USERNAME_REQUIREMENTS } from "./lib/usernames";
@@ -284,6 +285,7 @@ const manageTabs = [
 export default function App() {
   const {
     state,
+    floorViewScope,
     update,
     syncStatus,
     syncError,
@@ -295,6 +297,7 @@ export default function App() {
     createAccess,
     refreshCloudConnection,
   } = useStronghold(seedState);
+  const [activeFloorId, setActiveFloorId] = useFloorView(state.floors, floorViewScope);
   const [active, setActive] = useState("plan");
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -310,7 +313,7 @@ export default function App() {
 
   const content = {
     overview: <Overview state={state} updateState={update} onNavigate={navigate} />,
-    plan: <PlanEditor state={state} updateState={update} onToast={showToast} />,
+    plan: <PlanEditor key={floorViewScope ?? "connecting"} state={state} updateState={update} activeFloorId={activeFloorId} onFloorChange={setActiveFloorId} onToast={showToast} />,
     facilities: <Facilities state={state} updateState={update} onToast={showToast} onNavigate={navigate} />,
     downtime: <Downtime state={state} updateState={update} onToast={showToast} />,
     roster: <Roster state={state} updateState={update} onToast={showToast} />,

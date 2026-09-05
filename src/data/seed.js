@@ -36,7 +36,6 @@ export const seedState = {
   level: 6,
   week: 12,
   treasury: 1860,
-  activeFloorId: "ground",
   floors: seedFloors,
   condition: {
     status: "Needs attention",

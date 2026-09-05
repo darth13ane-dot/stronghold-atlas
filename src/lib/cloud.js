@@ -238,11 +238,14 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
 
   return {
     id: strongholdId,
+    userId,
     save: async (state) => {
       const { error } = await client
         .from("strongholds")
         .update({ name: state.name, state, updated_at: new Date().toISOString() })
-        .eq("id", strongholdId);
+        .eq("id", strongholdId)
+        .select("id")
+        .single();
       if (error) throw error;
     },
     invite: async (role = "editor") => {

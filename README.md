@@ -9,6 +9,7 @@ The app includes:
 - facility, downtime, roster, upkeep, and rules views;
 - undo/redo and browser autosave;
 - same-device live updates across tabs;
+- independent floor views, remembered in each browser for each account and stronghold;
 - optional Supabase-backed browser sessions, usernames, owner-managed member access, secure invite links, row-level access, and realtime internet sync.
 
 ## Run locally
@@ -19,6 +20,8 @@ pnpm dev
 ```
 
 Without cloud settings, the app runs in local demo mode and stores its state in the browser.
+
+Choosing a floor changes only your view. Rooms, floor creation, and floor deletion still sync with collaborators. If your selected floor is removed, your view returns to the first available floor. Floor preferences stay on the current browser and are separate from shared saves and undo/redo. Open tabs can browse independently; reopening uses the last saved preference for that account and stronghold. Cloud workspaces use their authenticated realtime channels; the shared browser cache and tab broadcast are reserved for local demo mode.
 
 ## Turn on internet collaboration
 
