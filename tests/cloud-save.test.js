@@ -27,9 +27,9 @@ test("cloud writes use the database timestamp as an atomic precondition and repo
         select() { return this; },
         update(value) { payload = value; return this; },
         eq(key, value) { filters[key] = value; return this; },
-        async single() { return { data: stored, error: null }; },
         async maybeSingle() {
           assert.equal(filters.id, workspace);
+          if (!payload) return { data: stored, error: null };
           assert.ok(filters.updated_at, "Each write must include an expected timestamp");
           assert.equal(Object.hasOwn(payload, "updated_at"), false, "The database supplies the new timestamp");
           if (denied || filters.updated_at !== stored.updated_at) return { data: null, error: null };

@@ -197,6 +197,10 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
     const { data, error } = await client.rpc("accept_stronghold_invite", { p_token: inviteToken });
     if (error) throw error;
     strongholdId = data;
+    // The invite is single-use. Preserve the accepted workspace immediately so
+    // a failed initial read can be retried without consuming the invite again.
+    rememberStrongholdId(strongholdId);
+    replaceStrongholdLocation(params, strongholdId);
   }
 
   if (!strongholdId) {
@@ -212,8 +216,13 @@ export async function connectCloudWorkspace(localState, onRemoteState, onStatus)
       .from("strongholds")
       .select("state,updated_at")
       .eq("id", strongholdId)
-      .single();
+      .maybeSingle();
     if (error) throw error;
+    if (!data) {
+      const unavailable = new Error("This stronghold is unavailable to your current account. Check that you signed in with the right username, or ask the owner for a new invite. The displayed plan is a sample until your stronghold connects.");
+      unavailable.code = "WORKSPACE_UNAVAILABLE";
+      throw unavailable;
+    }
     return { state: data.state, version: data.updated_at };
   };
   const initial = await read();

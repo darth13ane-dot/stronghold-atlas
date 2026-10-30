@@ -63,7 +63,7 @@ function accountErrorMessage(error) {
   return error?.message || "Account information could not be loaded.";
 }
 
-export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onAccessChanged = () => {}, onClose, onToast = () => {} }) {
+export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, syncStatus, syncError, onAccessChanged = () => {}, onClose, onToast = () => {} }) {
   const [members, setMembers] = useState([]);
   const [username, setUsername] = useState("");
   const [savedUsername, setSavedUsername] = useState("");
@@ -264,7 +264,11 @@ export function RegisteredAccountsDialog({ cloudConfigured, cloudReady, onAccess
         {!cloudConfigured ? (
           <p className="registered-accounts-dialog__message">Connect Supabase to manage accounts.</p>
         ) : !cloudReady ? (
-          <p className="registered-accounts-dialog__message">Waiting for the live workspace connection…</p>
+          <div className="registered-accounts-dialog__message">
+            <p>{syncStatus === "error" ? syncError : "Waiting for the live workspace connection…"}</p>
+            {syncStatus === "error" ? <><p>Keep your username and PIN available before signing out.</p><button className="button button--secondary" type="button" disabled={pinStatus === "saving"} onClick={leaveSession}>Sign out and switch account</button></> : null}
+            {pinError ? <p className="account-profile__error" role="alert">{pinError}</p> : null}
+          </div>
         ) : (
           <>
             <section className="account-profile" aria-labelledby="account-profile-title">

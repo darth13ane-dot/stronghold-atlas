@@ -354,7 +354,7 @@ export default function App() {
       </div>
       {dialog === "calendar" ? <CalendarDialog week={state.week} onSave={(week) => { update((current) => ({ ...current, week })); showToast(`Calendar set to week ${week}`); }} onClose={() => setDialog(null)} /> : null}
       {dialog === "invite" ? <InviteDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} syncStatus={syncStatus} syncError={syncError} createInvite={createInvite} onClose={() => setDialog(null)} onToast={showToast} /> : null}
-      {dialog === "accounts" ? <RegisteredAccountsDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} onAccessChanged={refreshCloudConnection} onClose={() => setDialog(null)} onToast={showToast} /> : null}
+      {dialog === "accounts" ? <RegisteredAccountsDialog cloudConfigured={cloudConfigured} cloudReady={cloudReady} syncStatus={syncStatus} syncError={syncError} onAccessChanged={refreshCloudConnection} onClose={() => setDialog(null)} onToast={showToast} /> : null}
       {accessRequired ? <AccessDialog key={accessRequired} reason={accessRequired} onCreateAccess={createAccess} onSignIn={signIn} /> : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
     </div>
